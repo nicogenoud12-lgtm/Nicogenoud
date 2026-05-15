@@ -169,3 +169,58 @@ class CryptoHoldingOut(CryptoHoldingIn):
 
     class Config:
         from_attributes = True
+
+
+class CoinSearchResult(BaseModel):
+    id: str
+    symbol: str
+    name: str
+    thumb: Optional[str] = None
+    market_cap_rank: Optional[int] = None
+
+
+class CryptoReportItem(BaseModel):
+    id: int
+    symbol: str
+    name: Optional[str]
+    coingecko_id: Optional[str]
+    cantidad: float
+    costo_usd_unit: Optional[float]
+    costo_total_usd: Optional[float]
+    price_usd: Optional[float]
+    price_ars: Optional[float]
+    value_usd: Optional[float]
+    value_ars: Optional[float]
+    pnl_usd: Optional[float]
+    pnl_pct: Optional[float]
+    change_24h_pct: Optional[float]
+    pct_portfolio: float
+    exchange: Optional[str]
+    has_price: bool
+
+
+class CryptoReport(BaseModel):
+    items: list[CryptoReportItem]
+    total_value_usd: float
+    total_value_ars: float
+    total_cost_usd: float
+    pnl_total_usd: float
+    pnl_total_pct: Optional[float]
+    ars_rate: float
+    dolar_source: str
+    fetched_at: datetime
+    missing_coingecko: list[str]
+    fetch_error: Optional[str] = None
+
+
+class CryptoSnapshotOut(BaseModel):
+    id: int
+    date: date
+    taken_at: datetime
+    total_usd: float
+    total_ars: float
+    cost_usd: float
+    dolar_rate: float
+
+    class Config:
+        from_attributes = True

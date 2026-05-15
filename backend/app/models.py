@@ -196,6 +196,28 @@ class CryptoHolding(Base):
     )
 
 
+class CryptoSnapshot(Base):
+    __tablename__ = "crypto_snapshots"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+    taken_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    total_usd: Mapped[float] = mapped_column(Numeric(18, 2), nullable=False, default=0)
+    total_ars: Mapped[float] = mapped_column(Numeric(18, 2), nullable=False, default=0)
+    cost_usd: Mapped[float] = mapped_column(Numeric(18, 2), nullable=False, default=0)
+    dolar_rate: Mapped[float] = mapped_column(Numeric(18, 4), nullable=False, default=0)
+    breakdown_json: Mapped[dict | list] = mapped_column(JSON, nullable=False, default=list)
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "date", name="uq_crypto_snapshot_user_date"),
+    )
+
+
 class AppSetting(Base):
     __tablename__ = "app_settings"
 

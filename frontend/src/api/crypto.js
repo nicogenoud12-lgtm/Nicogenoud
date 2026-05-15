@@ -11,3 +11,12 @@ export const updateCryptoHolding = (id, payload) =>
 
 export const deleteCryptoHolding = (id) =>
   api.delete(`/crypto/holdings/${id}`).then((r) => r.data);
+
+export const searchCoins = (q) =>
+  api.get("/crypto/search", { params: { q } }).then((r) => r.data);
+
+export const getCryptoReport = () =>
+  api.get("/crypto/report").then((r) => r.data);
+
+export const listCryptoSnapshots = (days = 180) =>
+  api.get("/crypto/snapshots", { params: { days } }).then((r) => r.data);

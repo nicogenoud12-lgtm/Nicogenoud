@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from .crud import get_setting
 from .database import SessionLocal
-from .jobs import dolar_job, operations_sync, snapshot_job
+from .jobs import crypto_snapshot_job, dolar_job, operations_sync, snapshot_job
 
 log = logging.getLogger(__name__)
 
@@ -23,6 +23,10 @@ def _cron(expr: str, tz: str) -> CronTrigger:
 async def _run_snapshot_and_ops():
     await snapshot_job.run()
     await operations_sync.run()
+    try:
+        await crypto_snapshot_job.run()
+    except Exception:
+        log.exception("crypto snapshot job failed")
 
 
 def get_scheduler() -> AsyncIOScheduler | None:
