@@ -38,6 +38,16 @@ export default function TenenciasScreen() {
 
   const fmt = currency === "USD" ? formatUSD : formatARS;
 
+  const totalFiltrado = useMemo(
+    () =>
+      rows.reduce(
+        (acc, r) =>
+          acc + Number((currency === "USD" ? r.valuacion_usd : r.valuacion_ars) || 0),
+        0,
+      ),
+    [rows, currency],
+  );
+
   const columns = [
     { key: "simbolo", label: "Símbolo", sortable: true },
     { key: "clase", label: "Clase", sortable: true, render: (r) => <span className="chip">{r.clase}</span> },
@@ -120,6 +130,14 @@ export default function TenenciasScreen() {
             {c}
           </button>
         ))}
+      </div>
+
+      <div className="card p-3 flex flex-wrap items-baseline justify-between gap-2">
+        <div className="text-xs uppercase tracking-wide text-textMuted">
+          Total {clase === "Todos" ? "" : clase} · {rows.length}{" "}
+          {rows.length === 1 ? "tenencia" : "tenencias"}
+        </div>
+        <div className="text-lg font-semibold tabular-nums">{fmt(totalFiltrado)}</div>
       </div>
 
       {q.isLoading ? <LoadingSpinner /> : <DataTable columns={columns} rows={rows} />}
