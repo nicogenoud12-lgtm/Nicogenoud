@@ -150,3 +150,22 @@ class SettingsResponse(BaseModel):
 
 class SettingsUpdate(BaseModel):
     settings: dict[str, str] = Field(default_factory=dict)
+
+
+class CryptoHoldingIn(BaseModel):
+    symbol: str = Field(min_length=1, max_length=32)
+    name: Optional[str] = Field(default=None, max_length=128)
+    coingecko_id: Optional[str] = Field(default=None, max_length=64)
+    cantidad: float
+    costo_usd_unit: Optional[float] = None
+    exchange: Optional[str] = Field(default=None, max_length=64)
+    notas: Optional[str] = Field(default=None, max_length=500)
+
+
+class CryptoHoldingOut(CryptoHoldingIn):
+    id: int
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True

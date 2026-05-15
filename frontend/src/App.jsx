@@ -6,6 +6,7 @@ import ResumenScreen from "./screens/ResumenScreen.jsx";
 import TenenciasScreen from "./screens/TenenciasScreen.jsx";
 import OperacionesScreen from "./screens/OperacionesScreen.jsx";
 import AnalisisScreen from "./screens/AnalisisScreen.jsx";
+import CryptoScreen from "./screens/CryptoScreen.jsx";
 import AjustesScreen from "./screens/AjustesScreen.jsx";
 
 export default function App() {
@@ -23,6 +24,7 @@ export default function App() {
         <Route path="tenencias" element={<TenenciasScreen />} />
         <Route path="operaciones" element={<OperacionesScreen />} />
         <Route path="analisis" element={<AnalisisScreen />} />
+        <Route path="crypto" element={<CryptoScreen />} />
         <Route path="ajustes" element={<AjustesScreen />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
