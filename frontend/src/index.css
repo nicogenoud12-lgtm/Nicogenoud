@@ -1,0 +1,88 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --c-bg: 245 247 250;
+  --c-surface: 255 255 255;
+  --c-surface-alt: 249 250 252;
+  --c-border: 226 232 240;
+  --c-text: 15 23 42;
+  --c-text-muted: 100 116 139;
+  --c-accent: 59 130 246;
+  --c-accent-soft: 219 234 254;
+  --c-success: 22 163 74;
+  --c-danger: 220 38 38;
+  --c-warn: 217 119 6;
+
+  color-scheme: light;
+}
+
+html.dark {
+  --c-bg: 11 15 25;
+  --c-surface: 17 24 39;
+  --c-surface-alt: 24 33 49;
+  --c-border: 38 50 71;
+  --c-text: 229 231 235;
+  --c-text-muted: 148 163 184;
+  --c-accent: 96 165 250;
+  --c-accent-soft: 30 58 138;
+  --c-success: 34 197 94;
+  --c-danger: 248 113 113;
+  --c-warn: 251 191 36;
+
+  color-scheme: dark;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  background-color: rgb(var(--c-bg));
+  color: rgb(var(--c-text));
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: rgb(var(--c-border));
+  border-radius: 8px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgb(var(--c-text-muted));
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+@layer components {
+  .card {
+    @apply bg-surface border border-border rounded-xl;
+  }
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors;
+  }
+  .btn-primary {
+    @apply btn bg-accent text-white hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+  .btn-secondary {
+    @apply btn bg-surfaceAlt text-text border border-border hover:bg-border/60;
+  }
+  .btn-danger {
+    @apply btn bg-danger/10 text-danger border border-danger/30 hover:bg-danger/20;
+  }
+  .input {
+    @apply w-full rounded-lg bg-surfaceAlt border border-border px-3 py-2 text-sm text-text placeholder-textMuted focus:outline-none focus:ring-2 focus:ring-accent/40 focus:border-accent;
+  }
+  .label {
+    @apply text-xs uppercase tracking-wide text-textMuted;
+  }
+  .chip {
+    @apply inline-flex items-center rounded-full bg-surfaceAlt border border-border px-2.5 py-0.5 text-xs;
+  }
+}

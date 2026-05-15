@@ -1,0 +1,152 @@
+from datetime import date, datetime
+from typing import Any, Optional
+
+from pydantic import BaseModel, Field
+
+
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
+
+class TokenResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    expires_in: int
+
+
+class MeResponse(BaseModel):
+    id: int
+    username: str
+    is_admin: bool
+    iol_connected: bool
+
+
+class IolConnectRequest(BaseModel):
+    iol_username: str
+    iol_password: str
+
+
+class IolStatusResponse(BaseModel):
+    connected: bool
+    iol_username: Optional[str] = None
+    connected_at: Optional[datetime] = None
+    access_expires_at: Optional[datetime] = None
+    last_error: Optional[str] = None
+
+
+class HoldingOut(BaseModel):
+    id: int
+    mercado: str
+    simbolo: str
+    descripcion: Optional[str]
+    tipo: Optional[str]
+    clase: str
+    cantidad: float
+    ppc: Optional[float]
+    ultimo_precio: Optional[float]
+    valuacion_ars: float
+    valuacion_usd: float
+    ganancia_porcentaje: Optional[float]
+    ganancia_dinero: Optional[float]
+    moneda: Optional[str]
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class KpiBreakdownItem(BaseModel):
+    clase: str
+    valor_ars: float
+    valor_usd: float
+    pct: float
+
+
+class KpisResponse(BaseModel):
+    total_ars: float
+    total_usd: float
+    dolar_rate: float
+    dolar_source: str
+    pnl_no_realizada_ars: float
+    pnl_realizada_2026_ars: float
+    pnl_realizada_2026_usd: float
+    dividendos_2026_ars: float
+    dividendos_2026_usd: float
+    renta_2026_ars: float
+    renta_2026_usd: float
+    n_operaciones_2026: int
+    distribucion_por_clase: list[KpiBreakdownItem]
+
+
+class OperationOut(BaseModel):
+    id: int
+    iol_numero: str
+    fecha_operada: Optional[date]
+    fecha_liquidacion: Optional[date]
+    tipo: Optional[str]
+    event_kind: str
+    currency_kind: str
+    estado: Optional[str]
+    simbolo: Optional[str]
+    descripcion: Optional[str]
+    mercado: Optional[str]
+    cantidad: Optional[float]
+    precio: Optional[float]
+    monto_operado: Optional[float]
+    comisiones: Optional[float]
+    derechos_mercado: Optional[float]
+    iva: Optional[float]
+    monto_neto: Optional[float]
+    moneda: Optional[str]
+
+    class Config:
+        from_attributes = True
+
+
+class OperationsSummary(BaseModel):
+    year: int
+    count: int
+    total_compras_ars: float
+    total_ventas_ars: float
+    total_compras_usd: float
+    total_ventas_usd: float
+    total_dividendos_ars: float
+    total_dividendos_usd: float
+    total_renta_ars: float
+    total_renta_usd: float
+    by_simbolo: list[dict[str, Any]]
+    by_mes: list[dict[str, Any]]
+
+
+class DolarQuoteOut(BaseModel):
+    date: date
+    source: str
+    compra: Optional[float]
+    venta: Optional[float]
+    promedio: float
+
+    class Config:
+        from_attributes = True
+
+
+class SnapshotOut(BaseModel):
+    id: int
+    date: date
+    taken_at: datetime
+    total_ars: float
+    total_usd: float
+    dolar_rate: float
+    dolar_source: str
+    source: str
+
+    class Config:
+        from_attributes = True
+
+
+class SettingsResponse(BaseModel):
+    settings: dict[str, str]
+
+
+class SettingsUpdate(BaseModel):
+    settings: dict[str, str] = Field(default_factory=dict)
