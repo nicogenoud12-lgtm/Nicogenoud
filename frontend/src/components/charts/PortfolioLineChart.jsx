@@ -23,6 +23,14 @@ export default function PortfolioLineChart({ data }) {
     total_usd: Number(d.total_usd || 0),
   }));
 
+  const compactFmt = (v) => {
+    const sign = v < 0 ? "-" : "";
+    const abs = Math.abs(v);
+    if (abs >= 1_000_000) return `${sign}${(abs / 1_000_000).toFixed(1)}M`;
+    if (abs >= 1_000) return `${sign}${Math.round(abs / 1_000)}k`;
+    return `${sign}${Math.round(abs)}`;
+  };
+
   return (
     <div className="card p-4 h-80">
       <div className="flex items-baseline justify-between mb-2">
@@ -32,26 +40,29 @@ export default function PortfolioLineChart({ data }) {
         </div>
       </div>
       <ResponsiveContainer width="100%" height="85%">
-        <LineChart data={series} margin={{ top: 8, right: 16, left: 8, bottom: 0 }}>
+        <LineChart data={series} margin={{ top: 8, right: 12, left: 4, bottom: 0 }}>
           <CartesianGrid stroke={t.grid} strokeDasharray="3 3" vertical={false} />
           <XAxis
             dataKey="date"
             tickFormatter={formatDateShort}
-            tick={{ fill: t.axis, fontSize: 11 }}
+            tick={{ fill: t.axis, fontSize: 10 }}
             stroke={t.grid}
+            minTickGap={24}
           />
           <YAxis
-            tickFormatter={(v) => fmt(v).replace(/\s/g, "")}
-            tick={{ fill: t.axis, fontSize: 11 }}
+            tickFormatter={compactFmt}
+            tick={{ fill: t.axis, fontSize: 10 }}
             stroke={t.grid}
-            width={90}
+            width={44}
           />
           <Tooltip
+            wrapperStyle={{ zIndex: 50 }}
             contentStyle={{
               background: t.tooltipBg,
               border: `1px solid ${t.tooltipBorder}`,
               borderRadius: 8,
               color: t.text,
+              fontSize: 12,
             }}
             labelFormatter={formatDateShort}
             formatter={(value, name) => [fmt(value), name === "total_ars" ? "ARS" : "USD"]}

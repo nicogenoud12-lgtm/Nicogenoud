@@ -21,15 +21,15 @@ export default function AssetDonutChart({ data }) {
   return (
     <div className="card p-4">
       <div className="label mb-2">Distribución por clase</div>
-      <div className="relative h-64">
+      <div className="relative h-64 sm:h-72">
         <ResponsiveContainer width="100%" height="100%">
           <PieChart>
             <Pie
               data={series}
               dataKey="value"
               nameKey="name"
-              innerRadius={60}
-              outerRadius={100}
+              innerRadius="58%"
+              outerRadius="88%"
               paddingAngle={2}
               stroke="none"
             >
@@ -43,6 +43,7 @@ export default function AssetDonutChart({ data }) {
                 border: `1px solid ${t.tooltipBorder}`,
                 borderRadius: 8,
                 color: t.text,
+                fontSize: 12,
               }}
               formatter={(value, _name, item) => [
                 `${fmt(value)} (${(item.payload.pct || 0).toFixed(1)}%)`,
@@ -51,9 +52,16 @@ export default function AssetDonutChart({ data }) {
             />
           </PieChart>
         </ResponsiveContainer>
-        <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-          <div className="text-xs text-textMuted">Total</div>
-          <div className="text-base font-semibold tabular-nums">{fmt(total)}</div>
+        <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none px-2">
+          <div className="text-[10px] uppercase tracking-wide text-textMuted">
+            Total
+          </div>
+          <div
+            className="font-semibold tabular-nums leading-tight text-center"
+            style={{ fontSize: "clamp(0.7rem, 3.6vw, 1rem)" }}
+          >
+            {fmt(total)}
+          </div>
         </div>
       </div>
       <div className="mt-3 flex flex-wrap gap-2 justify-center">
