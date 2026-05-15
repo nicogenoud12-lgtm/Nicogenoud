@@ -132,8 +132,10 @@ export default function CryptoScreen() {
   const report = useQuery({
     queryKey: ["crypto-report"],
     queryFn: getCryptoReport,
+    staleTime: 0,
     refetchInterval: 60_000,
-    staleTime: 30_000,
+    refetchOnWindowFocus: true,
+    refetchOnMount: true,
   });
   const snaps = useQuery({
     queryKey: ["crypto-snapshots", 180],
@@ -290,20 +292,16 @@ export default function CryptoScreen() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-center gap-3">
+      <div className="flex flex-wrap items-center gap-2">
         <h1 className="text-xl font-semibold mr-auto">Crypto</h1>
-        {r?.fetched_at && (
+        {report.isFetching && (
+          <span className="text-xs text-textMuted">Actualizando…</span>
+        )}
+        {r?.fetched_at && !report.isFetching && (
           <span className="text-xs text-textMuted">
-            Cotizaciones: {new Date(r.fetched_at).toLocaleTimeString("es-AR")}
+            {new Date(r.fetched_at).toLocaleTimeString("es-AR")}
           </span>
         )}
-        <button
-          className="btn-primary"
-          onClick={() => report.refetch()}
-          disabled={report.isFetching}
-        >
-          {report.isFetching ? "Actualizando…" : "↻ Actualizar precios"}
-        </button>
       </div>
 
       {r?.fetch_error && (
