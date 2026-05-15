@@ -7,21 +7,34 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
+import { useMemo } from "react";
 import { useUiStore } from "../../store/uiStore";
 import { formatARS, formatDateShort, formatUSD } from "../../utils/format";
 import { useChartTokens } from "./chartTheme";
 
-export default function PortfolioLineChart({ data }) {
+export default function PortfolioLineChart({ data, selectedClass }) {
   const currency = useUiStore((s) => s.currency);
   const t = useChartTokens();
   const dataKey = currency === "USD" ? "total_usd" : "total_ars";
   const fmt = currency === "USD" ? formatUSD : formatARS;
 
-  const series = (data || []).map((d) => ({
-    ...d,
-    total_ars: Number(d.total_ars || 0),
-    total_usd: Number(d.total_usd || 0),
-  }));
+  const series = useMemo(() => {
+    return (data || []).map((d) => {
+      if (selectedClass && Array.isArray(d.breakdown_json) && d.breakdown_json.length > 0) {
+        const filtered = d.breakdown_json.filter((h) => h.clase === selectedClass);
+        return {
+          ...d,
+          total_ars: filtered.reduce((s, h) => s + Number(h.valuacion_ars || 0), 0),
+          total_usd: filtered.reduce((s, h) => s + Number(h.valuacion_usd || 0), 0),
+        };
+      }
+      return {
+        ...d,
+        total_ars: Number(d.total_ars || 0),
+        total_usd: Number(d.total_usd || 0),
+      };
+    });
+  }, [data, selectedClass]);
 
   const compactFmt = (v) => {
     const sign = v < 0 ? "-" : "";
@@ -35,7 +48,14 @@ export default function PortfolioLineChart({ data }) {
     <div className="card p-4 h-80">
       <div className="flex items-baseline justify-between mb-2">
         <div>
-          <div className="label">Evolución de cartera</div>
+          <div className="label">
+            Evolución de cartera
+            {selectedClass && (
+              <span className="ml-2 normal-case font-normal text-accent">
+                · {selectedClass}
+              </span>
+            )}
+          </div>
           <div className="text-xs text-textMuted">{currency}</div>
         </div>
       </div>

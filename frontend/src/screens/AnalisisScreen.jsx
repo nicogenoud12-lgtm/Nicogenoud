@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { getHoldings, getKpis } from "../api/portfolio";
 import { operationsSummary } from "../api/operations";
 import { listSnapshots } from "../api/snapshots";
@@ -13,6 +13,7 @@ import { useUiStore } from "../store/uiStore";
 export default function AnalisisScreen() {
   const currency = useUiStore((s) => s.currency);
   const fmt = currency === "USD" ? formatUSD : formatARS;
+  const [selectedClass, setSelectedClass] = useState(null);
   const kpis = useQuery({ queryKey: ["kpis"], queryFn: getKpis });
   const holdings = useQuery({ queryKey: ["holdings"], queryFn: () => getHoldings(false) });
   const snaps = useQuery({ queryKey: ["snapshots", 3650], queryFn: () => listSnapshots(3650) });
@@ -39,13 +40,17 @@ export default function AnalisisScreen() {
     <div className="space-y-6">
       <h1 className="text-xl font-semibold">Análisis</h1>
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <AssetDonutChart data={kpis.data?.distribucion_por_clase || []} />
+        <AssetDonutChart
+          data={kpis.data?.distribucion_por_clase || []}
+          selectedClass={selectedClass}
+          onSelect={setSelectedClass}
+        />
         <OperationsBarChart
           data={opsByBucket}
           title="Resultado neto por símbolo (Ventas − Compras)"
         />
       </div>
-      <PortfolioLineChart data={snaps.data || []} />
+      <PortfolioLineChart data={snaps.data || []} selectedClass={selectedClass} />
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <div className="card p-4">

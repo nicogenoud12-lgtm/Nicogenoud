@@ -139,6 +139,7 @@ class SnapshotOut(BaseModel):
     dolar_rate: float
     dolar_source: str
     source: str
+    breakdown_json: list = []
 
     class Config:
         from_attributes = True
