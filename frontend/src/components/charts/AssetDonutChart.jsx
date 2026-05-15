@@ -19,11 +19,11 @@ function ActiveSlice(props) {
   );
 }
 
-export default function AssetDonutChart({ data }) {
+export default function AssetDonutChart({ data, selectedClass, onSelect }) {
   const currency = useUiStore((s) => s.currency);
   const fmt = currency === "USD" ? formatUSD : formatARS;
   const valueKey = currency === "USD" ? "valor_usd" : "valor_ars";
-  const [activeIdx, setActiveIdx] = useState(null);
+  const [hoverIdx, setHoverIdx] = useState(null);
 
   const series = (data || []).map((d, i) => ({
     name: d.clase,
@@ -33,7 +33,31 @@ export default function AssetDonutChart({ data }) {
   }));
 
   const total = series.reduce((a, b) => a + b.value, 0);
-  const active = activeIdx != null ? series[activeIdx] : null;
+
+  const selectedIdx = selectedClass != null
+    ? series.findIndex((s) => s.name === selectedClass)
+    : null;
+
+  // What to show in the center:
+  // 1. Hovering → hovered segment
+  // 2. Class selected → selected segment
+  // 3. Nothing → Total
+  const displaySeg =
+    hoverIdx != null
+      ? series[hoverIdx]
+      : selectedIdx != null && selectedIdx >= 0
+        ? series[selectedIdx]
+        : null;
+
+  const activeIdx = hoverIdx ?? (selectedIdx >= 0 ? selectedIdx : null);
+
+  function handleClick(_, idx) {
+    if (!onSelect) return;
+    const name = series[idx]?.name;
+    onSelect(name === selectedClass ? null : name);
+  }
+
+  const hasFilter = selectedClass != null;
 
   return (
     <div className="card p-4">
@@ -51,33 +75,43 @@ export default function AssetDonutChart({ data }) {
               stroke="none"
               activeIndex={activeIdx}
               activeShape={ActiveSlice}
-              onMouseEnter={(_, idx) => setActiveIdx(idx)}
-              onMouseLeave={() => setActiveIdx(null)}
+              onMouseEnter={(_, idx) => setHoverIdx(idx)}
+              onMouseLeave={() => setHoverIdx(null)}
+              onClick={handleClick}
+              style={{ cursor: onSelect ? "pointer" : "default" }}
             >
               {series.map((s, i) => (
-                <Cell key={i} fill={s.color} />
+                <Cell
+                  key={i}
+                  fill={s.color}
+                  fillOpacity={
+                    hasFilter && s.name !== selectedClass && hoverIdx == null
+                      ? 0.25
+                      : 1
+                  }
+                />
               ))}
             </Pie>
           </PieChart>
         </ResponsiveContainer>
 
         <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none px-3">
-          {active ? (
+          {displaySeg ? (
             <>
               <div
-                className="text-xs font-medium mb-0.5"
-                style={{ color: active.color }}
+                className="text-xs font-medium mb-0.5 text-center"
+                style={{ color: displaySeg.color }}
               >
-                {active.name}
+                {displaySeg.name}
               </div>
               <div
                 className="font-semibold tabular-nums leading-tight text-center"
                 style={{ fontSize: "clamp(0.65rem, 3.2vw, 0.95rem)" }}
               >
-                {fmt(active.value)}
+                {fmt(displaySeg.value)}
               </div>
               <div className="text-[11px] text-textMuted mt-0.5">
-                {active.pct.toFixed(1)}%
+                {displaySeg.pct.toFixed(1)}%
               </div>
             </>
           ) : (
@@ -101,11 +135,12 @@ export default function AssetDonutChart({ data }) {
           <button
             key={s.name}
             type="button"
+            onClick={() => onSelect && onSelect(s.name === selectedClass ? null : s.name)}
             className={`chip transition-opacity ${
-              activeIdx != null && activeIdx !== i ? "opacity-40" : ""
-            }`}
-            onMouseEnter={() => setActiveIdx(i)}
-            onMouseLeave={() => setActiveIdx(null)}
+              hasFilter && s.name !== selectedClass ? "opacity-30" : ""
+            } ${onSelect ? "cursor-pointer hover:opacity-100" : ""}`}
+            onMouseEnter={() => setHoverIdx(i)}
+            onMouseLeave={() => setHoverIdx(null)}
           >
             <span
               className="inline-block h-2 w-2 rounded-full mr-1.5"
