@@ -98,21 +98,31 @@ class IolClient:
     async def get_operaciones(
         self,
         *,
-        estado: str = "terminada",
+        estado: str = "terminadas",
         desde: date,
         hasta: date,
+        pais: str | None = None,
     ) -> list:
         params = {
             "filtro.estado": estado,
             "filtro.fechaDesde": desde.isoformat(),
             "filtro.fechaHasta": hasta.isoformat(),
         }
+        if pais:
+            params["filtro.pais"] = pais
+        log.info(
+            "IOL GET /api/v2/operaciones params=%s",
+            {k: v for k, v in params.items()},
+        )
         result = await self._request("GET", "/api/v2/operaciones", params=params)
         if isinstance(result, dict) and "operaciones" in result:
-            return result["operaciones"]
-        if isinstance(result, list):
-            return result
-        return []
+            ops = result["operaciones"]
+        elif isinstance(result, list):
+            ops = result
+        else:
+            ops = []
+        log.info("IOL /api/v2/operaciones returned %d rows", len(ops))
+        return ops
 
     async def get_cotizacion(self, mercado: str, simbolo: str) -> dict:
         return await self._request(

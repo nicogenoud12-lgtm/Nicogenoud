@@ -51,14 +51,26 @@ async def sync_operations(
     desde = date(year, 1, 1)
     hasta = hasta or date.today()
     async with IolClient(db, user_id) as client:
-        ops = await client.get_operaciones(estado="terminada", desde=desde, hasta=hasta)
+        ops = await client.get_operaciones(estado="terminadas", desde=desde, hasta=hasta)
+
+    log.info("sync_operations: IOL returned %d raw rows (user=%d, year=%d)", len(ops), user_id, year)
 
     touched = 0
+    skipped_no_numero = 0
     for raw in ops:
         if not isinstance(raw, dict):
             continue
-        numero = raw.get("numero") or raw.get("Numero") or raw.get("numeroOperacion")
+        numero = (
+            raw.get("numero")
+            or raw.get("Numero")
+            or raw.get("numeroOperacion")
+            or raw.get("numeroOrden")
+            or raw.get("id")
+        )
         if numero is None:
+            skipped_no_numero += 1
+            if skipped_no_numero <= 3:
+                log.warning("sync_operations: row without numero: keys=%s", list(raw.keys()))
             continue
         iol_numero = str(numero)
 
@@ -110,4 +122,8 @@ async def sync_operations(
         touched += 1
 
     db.commit()
+    log.info(
+        "sync_operations: upserted=%d skipped_no_numero=%d user=%d year=%d",
+        touched, skipped_no_numero, user_id, year,
+    )
     return touched
