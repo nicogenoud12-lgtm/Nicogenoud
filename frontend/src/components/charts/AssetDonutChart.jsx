@@ -25,12 +25,14 @@ export default function AssetDonutChart({ data, selectedClass, onSelect }) {
   const valueKey = currency === "USD" ? "valor_usd" : "valor_ars";
   const [hoverIdx, setHoverIdx] = useState(null);
 
-  const series = (data || []).map((d, i) => ({
-    name: d.clase,
-    value: Number(d[valueKey] || 0),
-    pct: Number(d.pct || 0),
-    color: palette[i % palette.length],
-  }));
+  const series = (data || [])
+    .map((d) => ({
+      name: d.clase,
+      value: Number(d[valueKey] || 0),
+      pct: Number(d.pct || 0),
+    }))
+    .sort((a, b) => b.value - a.value)
+    .map((s, i) => ({ ...s, color: palette[i % palette.length] }));
 
   const total = series.reduce((a, b) => a + b.value, 0);
 

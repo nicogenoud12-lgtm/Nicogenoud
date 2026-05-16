@@ -6,17 +6,19 @@ Prices come in USD; ARS is derived using the user's configured dolar source
 from __future__ import annotations
 
 import logging
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from typing import Optional
 
 from sqlalchemy.orm import Session
 
 from ..crud import get_setting
-from ..models import CryptoHolding, CryptoSnapshot
+from ..models import CryptoHolding, CryptoSnapshot, DolarQuote
 from . import coingecko, dolar_service
 from .coingecko import CoinGeckoError
 
 log = logging.getLogger(__name__)
+
+DEFAULT_BACKFILL_SINCE = date(2026, 1, 1)
 
 
 async def _get_dolar_rate(db: Session) -> tuple[float, str]:
@@ -194,3 +196,120 @@ async def build_report_and_snapshot(db: Session, user_id: int) -> dict:
             breakdown=breakdown,
         )
     return report
+
+
+def _nearest_price(history: dict[date, float], target: date) -> Optional[float]:
+    """Return the price on `target`, or the most recent prior price if missing."""
+    if not history:
+        return None
+    if target in history:
+        return history[target]
+    earlier = [d for d in history if d <= target]
+    if not earlier:
+        # Pick the earliest available (helps when target predates the coin's history)
+        return history[min(history)]
+    return history[max(earlier)]
+
+
+async def backfill_history(
+    db: Session,
+    user_id: int,
+    *,
+    since: date = DEFAULT_BACKFILL_SINCE,
+    until: Optional[date] = None,
+) -> dict:
+    """Compute daily snapshots from `since` to today using current holdings + historical prices.
+
+    Assumes the user has held the *current* quantities since `since`. This is
+    a backwards-looking simulation, not a true purchase-history reconstruction.
+    """
+    until = until or date.today()
+    holdings: list[CryptoHolding] = (
+        db.query(CryptoHolding).filter(CryptoHolding.user_id == user_id).all()
+    )
+    if not holdings:
+        return {"days": 0, "since": since.isoformat(), "until": until.isoformat()}
+
+    # Pull historical USD prices per coin
+    histories: dict[str, dict[date, float]] = {}
+    failed: list[str] = []
+    for h in holdings:
+        cid = (h.coingecko_id or "").strip().lower()
+        if not cid:
+            failed.append(h.symbol)
+            continue
+        try:
+            histories[cid] = await coingecko.fetch_history_usd(cid, since, until)
+        except CoinGeckoError as e:
+            log.warning("backfill: history failed for %s (%s): %s", h.symbol, cid, e)
+            failed.append(h.symbol)
+
+    if not histories:
+        return {
+            "days": 0,
+            "since": since.isoformat(),
+            "until": until.isoformat(),
+            "failed_symbols": failed,
+        }
+
+    # Historical ARS rate from DolarQuote table; fall back to most recent / current
+    dolar_source = get_setting(db, "dolar_source", "MEP") or "MEP"
+    quotes = (
+        db.query(DolarQuote)
+        .filter(DolarQuote.source == dolar_source, DolarQuote.date >= since)
+        .order_by(DolarQuote.date.asc())
+        .all()
+    )
+    rate_history = {dq.date: float(dq.promedio) for dq in quotes if dq.promedio}
+    fallback_rate, _ = await _get_dolar_rate(db)
+
+    # Cost is current total cost (constant across the simulated history)
+    cost_usd = sum(
+        float(h.costo_usd_unit or 0) * float(h.cantidad or 0)
+        for h in holdings
+        if h.costo_usd_unit is not None
+    )
+
+    days = 0
+    cur = since
+    while cur <= until:
+        total_usd = 0.0
+        breakdown: list[dict] = []
+        for h in holdings:
+            cid = (h.coingecko_id or "").strip().lower()
+            if not cid:
+                continue
+            price = _nearest_price(histories.get(cid, {}), cur)
+            if price is None:
+                continue
+            qty = float(h.cantidad or 0)
+            value = qty * price
+            total_usd += value
+            if value:
+                breakdown.append({"symbol": h.symbol, "value_usd": value})
+
+        if total_usd > 0:
+            rate = rate_history.get(cur)
+            if rate is None:
+                prior = [d for d in rate_history if d <= cur]
+                rate = rate_history[max(prior)] if prior else fallback_rate
+
+            upsert_snapshot(
+                db,
+                user_id=user_id,
+                on_date=cur,
+                total_usd=total_usd,
+                total_ars=total_usd * (rate or 0),
+                cost_usd=cost_usd,
+                dolar_rate=rate or 0,
+                breakdown=breakdown,
+            )
+            days += 1
+        cur += timedelta(days=1)
+
+    return {
+        "days": days,
+        "since": since.isoformat(),
+        "until": until.isoformat(),
+        "failed_symbols": failed,
+    }

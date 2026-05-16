@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import logging
 import time
+from datetime import date, datetime, timezone
 from typing import Iterable
 
 import httpx
@@ -94,6 +95,40 @@ async def get_prices(
     data = r.json() or {}
     _price_cache[key] = (now + _PRICE_TTL, data)
     return data
+
+
+async def fetch_history_usd(coingecko_id: str, since: date, until: date) -> dict[date, float]:
+    """Return {date: usd_close_price} for the given coin over [since, until].
+
+    Uses /coins/{id}/market_chart/range with vs_currency=usd. For ranges > 90
+    days, CoinGecko returns daily granularity automatically.
+    """
+    cid = (coingecko_id or "").strip().lower()
+    if not cid:
+        return {}
+    ts_from = int(datetime(since.year, since.month, since.day, tzinfo=timezone.utc).timestamp())
+    ts_to = int(
+        datetime(until.year, until.month, until.day, 23, 59, 59, tzinfo=timezone.utc).timestamp()
+    )
+    url = f"{_BASE}/coins/{cid}/market_chart/range"
+    params = {"vs_currency": "usd", "from": str(ts_from), "to": str(ts_to)}
+    try:
+        async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
+            r = await client.get(url, params=params)
+        r.raise_for_status()
+    except httpx.HTTPError as e:
+        raise CoinGeckoError(f"history failed for {cid}: {e}") from e
+    data = r.json() or {}
+    out: dict[date, float] = {}
+    for entry in data.get("prices") or []:
+        try:
+            ts_ms, price = entry[0], entry[1]
+        except (IndexError, TypeError):
+            continue
+        d = datetime.fromtimestamp(ts_ms / 1000, tz=timezone.utc).date()
+        # Keep the last sample for each date (closest to end of day)
+        out[d] = float(price)
+    return out
 
 
 def invalidate_cache() -> None:

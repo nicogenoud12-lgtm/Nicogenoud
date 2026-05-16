@@ -20,3 +20,8 @@ export const getCryptoReport = () =>
 
 export const listCryptoSnapshots = (days = 180) =>
   api.get("/crypto/snapshots", { params: { days } }).then((r) => r.data);
+
+export const backfillCryptoSnapshots = (since) =>
+  api
+    .post("/crypto/backfill", null, { params: since ? { since } : {} })
+    .then((r) => r.data);

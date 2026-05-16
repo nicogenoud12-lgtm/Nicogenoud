@@ -165,3 +165,15 @@ def list_snapshots(
         .order_by(CryptoSnapshot.date.asc())
         .all()
     )
+
+
+@router.post("/backfill")
+async def backfill_snapshots(
+    since: date = Query(default=crypto_service.DEFAULT_BACKFILL_SINCE),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Recompute daily snapshots from `since` to today using current holdings
+    and historical CoinGecko prices. Existing snapshots in the range get
+    overwritten."""
+    return await crypto_service.backfill_history(db, user.id, since=since)

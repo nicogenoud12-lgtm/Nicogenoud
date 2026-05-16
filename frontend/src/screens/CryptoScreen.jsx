@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  backfillCryptoSnapshots,
   createCryptoHolding,
   deleteCryptoHolding,
   getCryptoReport,
@@ -166,6 +167,25 @@ export default function CryptoScreen() {
     mutationFn: deleteCryptoHolding,
     onSuccess: invalidate,
   });
+  const backfillM = useMutation({
+    mutationFn: () => backfillCryptoSnapshots(),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["crypto-snapshots", 180] });
+    },
+  });
+
+  const [sortKey, setSortKey] = useState("value_usd");
+  const [sortDir, setSortDir] = useState("desc");
+  function toggleSort(key) {
+    if (sortKey === key) {
+      setSortDir((d) => (d === "desc" ? "asc" : "desc"));
+    } else {
+      setSortKey(key);
+      setSortDir("desc");
+    }
+  }
+  const sortIndicator = (key) =>
+    sortKey === key ? (sortDir === "desc" ? " ↓" : " ↑") : "";
 
   function resetForm() {
     setForm(EMPTY_FORM);
@@ -222,7 +242,7 @@ export default function CryptoScreen() {
 
   const tableRows = useMemo(() => {
     const byId = new Map(items.map((i) => [i.id, i]));
-    return (holdings.data || []).map((h) => {
+    const rows = (holdings.data || []).map((h) => {
       const it = byId.get(h.id);
       if (it) return it;
       const cost =
@@ -247,7 +267,24 @@ export default function CryptoScreen() {
         has_price: false,
       };
     });
-  }, [holdings.data, items]);
+
+    const dir = sortDir === "desc" ? -1 : 1;
+    const sorted = [...rows].sort((a, b) => {
+      const va = a[sortKey];
+      const vb = b[sortKey];
+      // Nulls go to the bottom regardless of direction
+      const aNull = va == null;
+      const bNull = vb == null;
+      if (aNull && bNull) return 0;
+      if (aNull) return 1;
+      if (bNull) return -1;
+      if (typeof va === "string" && typeof vb === "string") {
+        return va.localeCompare(vb) * dir;
+      }
+      return (Number(va) - Number(vb)) * dir;
+    });
+    return sorted;
+  }, [holdings.data, items, sortKey, sortDir]);
 
   const distribution = useMemo(
     () =>
@@ -294,6 +331,14 @@ export default function CryptoScreen() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-center gap-2">
         <h1 className="text-xl font-semibold mr-auto">Crypto</h1>
+        <button
+          className="btn-secondary text-xs"
+          onClick={() => backfillM.mutate()}
+          disabled={backfillM.isPending}
+          title="Recalcula la evolución diaria desde el 1° de enero usando precios históricos de CoinGecko y tus tenencias actuales."
+        >
+          {backfillM.isPending ? "Recalculando…" : "↻ Recalcular evolución"}
+        </button>
         {report.isFetching && (
           <span className="text-xs text-textMuted">Actualizando…</span>
         )}
@@ -303,6 +348,14 @@ export default function CryptoScreen() {
           </span>
         )}
       </div>
+      {backfillM.isSuccess && backfillM.data && (
+        <div className="card p-3 text-sm">
+          Evolución recalculada: {backfillM.data.days} días desde {backfillM.data.since}
+          {backfillM.data.failed_symbols?.length > 0 && (
+            <> · Sin historial: {backfillM.data.failed_symbols.join(", ")}</>
+          )}
+        </div>
+      )}
 
       {r?.fetch_error && (
         <div className="card p-3 text-sm border-warn/30 text-warn">
@@ -516,14 +569,54 @@ export default function CryptoScreen() {
             <table className="w-full text-sm">
               <thead className="bg-surfaceAlt text-textMuted text-xs uppercase">
                 <tr>
-                  <th className="px-3 py-2 text-left">Símbolo</th>
-                  <th className="px-3 py-2 text-right">Cantidad</th>
-                  <th className="px-3 py-2 text-right">Precio</th>
-                  <th className="px-3 py-2 text-right">24h</th>
-                  <th className="px-3 py-2 text-right">Valor</th>
-                  <th className="px-3 py-2 text-right">Costo</th>
-                  <th className="px-3 py-2 text-right">P&L</th>
-                  <th className="px-3 py-2 text-right">% Cart.</th>
+                  <th
+                    className="px-3 py-2 text-left cursor-pointer select-none hover:text-text"
+                    onClick={() => toggleSort("symbol")}
+                  >
+                    Símbolo{sortIndicator("symbol")}
+                  </th>
+                  <th
+                    className="px-3 py-2 text-right cursor-pointer select-none hover:text-text"
+                    onClick={() => toggleSort("cantidad")}
+                  >
+                    Cantidad{sortIndicator("cantidad")}
+                  </th>
+                  <th
+                    className="px-3 py-2 text-right cursor-pointer select-none hover:text-text"
+                    onClick={() => toggleSort("price_usd")}
+                  >
+                    Precio{sortIndicator("price_usd")}
+                  </th>
+                  <th
+                    className="px-3 py-2 text-right cursor-pointer select-none hover:text-text"
+                    onClick={() => toggleSort("change_24h_pct")}
+                  >
+                    24h{sortIndicator("change_24h_pct")}
+                  </th>
+                  <th
+                    className="px-3 py-2 text-right cursor-pointer select-none hover:text-text"
+                    onClick={() => toggleSort("value_usd")}
+                  >
+                    Valor{sortIndicator("value_usd")}
+                  </th>
+                  <th
+                    className="px-3 py-2 text-right cursor-pointer select-none hover:text-text"
+                    onClick={() => toggleSort("costo_total_usd")}
+                  >
+                    Costo{sortIndicator("costo_total_usd")}
+                  </th>
+                  <th
+                    className="px-3 py-2 text-right cursor-pointer select-none hover:text-text"
+                    onClick={() => toggleSort("pnl_usd")}
+                  >
+                    P&L{sortIndicator("pnl_usd")}
+                  </th>
+                  <th
+                    className="px-3 py-2 text-right cursor-pointer select-none hover:text-text"
+                    onClick={() => toggleSort("pct_portfolio")}
+                  >
+                    % Cart.{sortIndicator("pct_portfolio")}
+                  </th>
                   <th className="px-3 py-2 text-left">Exchange</th>
                   <th className="px-3 py-2 text-right">Acciones</th>
                 </tr>
