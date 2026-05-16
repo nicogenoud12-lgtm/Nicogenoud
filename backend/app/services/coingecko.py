@@ -23,6 +23,56 @@ _price_cache: dict[tuple, tuple[float, dict]] = {}
 _search_cache: dict[str, tuple[float, list]] = {}
 
 
+# Well-known symbol → CoinGecko ID. Used to auto-resolve holdings that were
+# added without going through the search picker.
+KNOWN_IDS: dict[str, str] = {
+    "BTC": "bitcoin",
+    "ETH": "ethereum",
+    "BNB": "binancecoin",
+    "SOL": "solana",
+    "ADA": "cardano",
+    "DOT": "polkadot",
+    "LTC": "litecoin",
+    "ATOM": "cosmos",
+    "AVAX": "avalanche-2",
+    "MATIC": "matic-network",
+    "POL": "matic-network",
+    "LINK": "chainlink",
+    "UNI": "uniswap",
+    "XRP": "ripple",
+    "DOGE": "dogecoin",
+    "SHIB": "shiba-inu",
+    "TRX": "tron",
+    "XLM": "stellar",
+    "VET": "vechain",
+    "FIL": "filecoin",
+    "NEAR": "near",
+    "ALGO": "algorand",
+    "HBAR": "hedera-hashgraph",
+    "ICP": "internet-computer",
+    "NEXO": "nexo",
+    "USDT": "tether",
+    "USDC": "usd-coin",
+    "BUSD": "binance-usd",
+    "DAI": "dai",
+    "OP": "optimism",
+    "ARB": "arbitrum",
+    "APT": "aptos",
+    "SUI": "sui",
+    "SEI": "sei-network",
+    "INJ": "injective-protocol",
+    "TIA": "celestia",
+    "PEPE": "pepe",
+    "WIF": "dogwifcoin",
+    "BONK": "bonk",
+}
+
+
+def resolve_id(symbol: str) -> str | None:
+    """Return the CoinGecko ID for a well-known symbol, or None."""
+    return KNOWN_IDS.get((symbol or "").strip().upper())
+
+
 class CoinGeckoError(RuntimeError):
     pass
 

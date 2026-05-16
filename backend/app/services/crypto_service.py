@@ -21,6 +21,25 @@ log = logging.getLogger(__name__)
 DEFAULT_BACKFILL_SINCE = date(2026, 1, 1)
 
 
+def _resolve_missing_ids(db: Session, holdings: list[CryptoHolding]) -> int:
+    """For each holding without a coingecko_id, try the well-known symbol map
+    and persist any resolution so future fetches (live + history) work.
+    Returns the number of holdings updated.
+    """
+    updated = 0
+    for h in holdings:
+        if (h.coingecko_id or "").strip():
+            continue
+        resolved = coingecko.resolve_id(h.symbol)
+        if resolved:
+            h.coingecko_id = resolved
+            updated += 1
+            log.info("crypto: auto-resolved coingecko_id=%s for symbol=%s", resolved, h.symbol)
+    if updated:
+        db.commit()
+    return updated
+
+
 async def _get_dolar_rate(db: Session) -> tuple[float, str]:
     source = get_setting(db, "dolar_source", "MEP") or "MEP"
     try:
@@ -39,6 +58,8 @@ async def build_report(db: Session, user_id: int) -> dict:
         .order_by(CryptoHolding.symbol.asc(), CryptoHolding.id.asc())
         .all()
     )
+
+    _resolve_missing_ids(db, holdings)
 
     ids = [h.coingecko_id for h in holdings if h.coingecko_id]
     prices: dict[str, dict] = {}
@@ -229,6 +250,10 @@ async def backfill_history(
     )
     if not holdings:
         return {"days": 0, "since": since.isoformat(), "until": until.isoformat()}
+
+    resolved_count = _resolve_missing_ids(db, holdings)
+    if resolved_count:
+        log.info("backfill: auto-resolved coingecko_id for %d holdings", resolved_count)
 
     # Pull historical USD prices per coin
     histories: dict[str, dict[date, float]] = {}
