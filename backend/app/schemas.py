@@ -32,6 +32,8 @@ class IolStatusResponse(BaseModel):
     iol_username: Optional[str] = None
     connected_at: Optional[datetime] = None
     access_expires_at: Optional[datetime] = None
+    refresh_expires_at: Optional[datetime] = None
+    last_keepalive_at: Optional[datetime] = None
     last_error: Optional[str] = None
 
 

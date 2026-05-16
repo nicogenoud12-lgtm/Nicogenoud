@@ -8,6 +8,12 @@ def test_normalize_ticker():
     assert normalize_ticker("YMCJC") == ("YMCJ", "C")
     assert normalize_ticker("AL30") == ("AL30", "")
     assert normalize_ticker("") == ("", "")
+    # IOL "US$" suffix on CEDEAR dividend rows
+    assert normalize_ticker("AAPL US$") == ("AAPL", "D")
+    assert normalize_ticker("HMY US$") == ("HMY", "D")
+    assert normalize_ticker("BPOC7 US$") == ("BPOC7", "D")
+    assert normalize_ticker("SPY USD") == ("SPY", "D")
+    assert normalize_ticker("KO U$S") == ("KO", "D")
 
 
 def test_is_on_whitelist():
@@ -91,3 +97,24 @@ def test_classify_event_compra_ars_default():
 def test_classify_event_unknown_falls_back():
     ev, _ = classify_event(tipo="Algo raro", simbolo="X", moneda="ARS")
     assert ev == "OTRO"
+
+
+def test_classify_event_dividendo_aapl_us_dollar():
+    ev, cur = classify_event(
+        tipo="Pago de dividendos",
+        simbolo="AAPL US$",
+        moneda=None,
+        asset_class="CEDEAR",
+    )
+    assert ev == "DIVIDENDO"
+    assert cur == "USD_MEP"
+
+
+def test_classify_event_dividendo_hmy_us_dollar():
+    _, cur = classify_event(tipo="Pago de dividendos", simbolo="HMY US$", moneda=None)
+    assert cur == "USD_MEP"
+
+
+def test_classify_event_dividendo_bpoc7_us_dollar():
+    _, cur = classify_event(tipo="Pago de dividendos", simbolo="BPOC7 US$", moneda=None)
+    assert cur == "USD_MEP"

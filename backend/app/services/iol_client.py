@@ -128,3 +128,32 @@ class IolClient:
         return await self._request(
             "GET", f"/api/v2/{mercado}/Titulos/{simbolo}/Cotizacion"
         )
+
+    async def get_movimientos(self, *, desde: date, hasta: date) -> list:
+        """Fetch account movements (net amounts post-retention).
+
+        IOL endpoint probed in order: /api/v2/MiCuenta/Movimientos,
+        /api/v2/Cuenta/Movimientos. Returns empty list on 404 (degraded gracefully).
+        """
+        params = {
+            "fechaDesde": desde.isoformat(),
+            "fechaHasta": hasta.isoformat(),
+        }
+        for path in ("/api/v2/MiCuenta/Movimientos", "/api/v2/Cuenta/Movimientos"):
+            try:
+                result = await self._request("GET", path, params=params)
+                if isinstance(result, list):
+                    log.info("IOL %s returned %d movimientos", path, len(result))
+                    return result
+                if isinstance(result, dict):
+                    for key in ("movimientos", "items", "data"):
+                        if key in result and isinstance(result[key], list):
+                            items = result[key]
+                            log.info("IOL %s[%s] returned %d movimientos", path, key, len(items))
+                            return items
+                log.warning("IOL %s unexpected shape: %s", path, list(result.keys()) if isinstance(result, dict) else type(result))
+                return []
+            except Exception as e:
+                log.warning("IOL %s failed (%s), trying next", path, e)
+        log.warning("get_movimientos: all endpoints failed, returning []")
+        return []

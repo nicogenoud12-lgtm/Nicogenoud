@@ -7,13 +7,13 @@ import LoadingSpinner from "../components/LoadingSpinner.jsx";
 import { formatARS, formatDate, formatNumber, formatUSD } from "../utils/format";
 import { useUiStore } from "../store/uiStore";
 
-const KINDS = ["COMPRA", "VENTA", "RENTA", "AMORTIZACION", "DIVIDENDO"];
+const KINDS = ["COMPRA", "VENTA", "SUSCRIPCION", "RESCATE", "RENTA", "AMORTIZACION", "DIVIDENDO"];
 
 export default function OperacionesScreen() {
   const currency = useUiStore((s) => s.currency);
   const qc = useQueryClient();
   const [year] = useState(2026);
-  const [kinds, setKinds] = useState(["COMPRA", "VENTA"]);
+  const [kinds, setKinds] = useState(["COMPRA", "VENTA", "SUSCRIPCION", "RESCATE"]);
   const [search, setSearch] = useState("");
 
   const ops = useQuery({

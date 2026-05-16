@@ -65,15 +65,21 @@ def normalize_ticker(simbolo: str) -> tuple[str, str]:
 
     Suffix is one of: '', 'D' (MEP), 'C' (CCL), 'O' (USD cable / dolar billete).
     Examples:
-        MRCAD  -> ('MRCA', 'D')
-        MR35D  -> ('MR35', 'D')
-        YMCJD  -> ('YMCJ', 'D')
-        YMCJC  -> ('YMCJ', 'C')
-        MRCA   -> ('MRCA', '')
+        MRCAD      -> ('MRCA', 'D')
+        MR35D      -> ('MR35', 'D')
+        YMCJD      -> ('YMCJ', 'D')
+        YMCJC      -> ('YMCJ', 'C')
+        MRCA       -> ('MRCA', '')
+        AAPL US$   -> ('AAPL', 'D')   # IOL CEDEAR dividend USD marker
+        HMY US$    -> ('HMY',  'D')
     """
     if not simbolo:
         return ("", "")
     s = simbolo.upper().strip()
+    # IOL uses " US$" / " USD" / " U$S" suffix on CEDEAR/dividend rows to signal USD
+    for marker in (" US$", " USD", " U$S"):
+        if s.endswith(marker):
+            return (s[: -len(marker)].strip(), "D")
     if len(s) >= 2 and s[-1] in {"D", "C", "O"}:
         base = s[:-1]
         return (base, s[-1])

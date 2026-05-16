@@ -47,6 +47,11 @@ export default function AjustesScreen() {
     mutationFn: iolDisconnect,
     onSuccess: () => qc.invalidateQueries({ queryKey: ["iol-status"] }),
   });
+  const handleDisconnect = () => {
+    if (window.confirm("Esto borra las credenciales IOL guardadas y cierra la sesión. ¿Seguro?")) {
+      disconnect.mutate();
+    }
+  };
   const refresh = useMutation({
     mutationFn: iolRefresh,
     onSuccess: () => qc.invalidateQueries({ queryKey: ["iol-status"] }),
@@ -125,8 +130,14 @@ export default function AjustesScreen() {
               <span className="font-medium">{st.iol_username}</span>
             </div>
             <div className="text-textMuted">
-              Conectado el {formatDate(st.connected_at)} · Token expira{" "}
+              Conectado el {formatDate(st.connected_at)} · Access expira{" "}
               {formatDate(st.access_expires_at)}
+              {st.refresh_expires_at && (
+                <> · Refresh expira {formatDate(st.refresh_expires_at)}</>
+              )}
+              {st.last_keepalive_at && (
+                <> · Keep-alive {formatDate(st.last_keepalive_at)}</>
+              )}
             </div>
             {st.last_error && (
               <div className="text-danger text-xs">Último error: {st.last_error}</div>
@@ -141,7 +152,7 @@ export default function AjustesScreen() {
               </button>
               <button
                 className="btn-danger"
-                onClick={() => disconnect.mutate()}
+                onClick={handleDisconnect}
                 disabled={disconnect.isPending}
               >
                 Desconectar

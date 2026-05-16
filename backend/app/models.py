@@ -63,6 +63,9 @@ class OauthToken(Base):
         onupdate=func.now(),
         nullable=False,
     )
+    last_keepalive_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
 
 class Holding(Base):
