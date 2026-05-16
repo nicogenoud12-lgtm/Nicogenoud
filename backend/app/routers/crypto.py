@@ -48,6 +48,45 @@ def create_holding(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    symbol = body.symbol.strip().upper()
+    existing = (
+        db.query(CryptoHolding)
+        .filter(CryptoHolding.user_id == user.id, CryptoHolding.symbol == symbol)
+        .first()
+    )
+
+    if existing is not None:
+        # Merge: suma cantidades + promedio ponderado del costo
+        new_qty = float(body.cantidad)
+        new_cost = float(body.costo_usd_unit) if body.costo_usd_unit is not None else None
+        old_qty = float(existing.cantidad)
+        old_cost = float(existing.costo_usd_unit) if existing.costo_usd_unit is not None else None
+
+        merged_qty = old_qty + new_qty
+        if old_cost is not None and new_cost is not None:
+            merged_cost = (old_qty * old_cost + new_qty * new_cost) / merged_qty
+        elif old_cost is not None:
+            merged_cost = old_cost
+        elif new_cost is not None:
+            merged_cost = new_cost
+        else:
+            merged_cost = None
+
+        existing.cantidad = merged_qty
+        existing.costo_usd_unit = merged_cost
+        if body.name:
+            existing.name = body.name.strip()
+        if body.coingecko_id:
+            existing.coingecko_id = body.coingecko_id.strip().lower()
+        if body.exchange:
+            existing.exchange = body.exchange.strip()
+        if body.notas:
+            existing.notas = body.notas.strip()
+
+        db.commit()
+        db.refresh(existing)
+        return existing
+
     h = CryptoHolding(user_id=user.id, symbol="", cantidad=0)
     _apply(h, body)
     db.add(h)
