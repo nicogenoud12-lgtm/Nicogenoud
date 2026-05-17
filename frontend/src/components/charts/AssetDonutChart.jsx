@@ -19,7 +19,7 @@ function ActiveSlice(props) {
   );
 }
 
-export default function AssetDonutChart({ data, selectedClass, onSelect }) {
+export default function AssetDonutChart({ data, selectedClass, onSelect, title }) {
   const currency = useUiStore((s) => s.currency);
   const fmt = currency === "USD" ? formatUSD : formatARS;
   const valueKey = currency === "USD" ? "valor_usd" : "valor_ars";
@@ -63,7 +63,7 @@ export default function AssetDonutChart({ data, selectedClass, onSelect }) {
 
   return (
     <div className="card p-4">
-      <div className="label mb-2">Distribución por clase</div>
+      <div className="label mb-2">{title || "Distribución por clase"}</div>
       <div className="relative h-64 sm:h-72">
         <ResponsiveContainer width="100%" height="100%">
           <PieChart>
