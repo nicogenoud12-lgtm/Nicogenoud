@@ -140,7 +140,13 @@ async def get_prices(
     try:
         async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
             r = await client.get(url, params=params)
+        if r.status_code == 429:
+            raise CoinGeckoError("prices rate-limited (429)")
         r.raise_for_status()
+    except CoinGeckoError:
+        raise
+    except httpx.HTTPStatusError as e:
+        raise CoinGeckoError(f"prices failed: HTTP {e.response.status_code}") from e
     except httpx.HTTPError as e:
         raise CoinGeckoError(f"prices failed: {e}") from e
     data = r.json() or {}

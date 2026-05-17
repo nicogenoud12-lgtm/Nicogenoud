@@ -1,10 +1,11 @@
-"""Binance public Klines API — daily OHLCV for spot pairs.
+"""Binance public API — live 24h ticker + daily Klines.
 
-Used as a fallback when CoinGecko rate-limits historical price requests.
+Used as a fallback when CoinGecko rate-limits requests.
 No API key required for public market data.
 """
 from __future__ import annotations
 
+import json
 import logging
 from datetime import date, datetime, timezone
 
@@ -59,6 +60,48 @@ _CGID_TO_SYMBOL: dict[str, str] = {
 
 class BinanceError(RuntimeError):
     pass
+
+
+async def get_prices(coingecko_ids: list[str]) -> dict[str, dict]:
+    """Return {coingecko_id: {usd: float, usd_24h_change: float}} using Binance 24hr ticker.
+
+    Coins without a Binance mapping are silently omitted from the result.
+    """
+    id_to_symbol: dict[str, str] = {}
+    for cid in coingecko_ids:
+        cid_lower = (cid or "").strip().lower()
+        sym = _CGID_TO_SYMBOL.get(cid_lower)
+        if sym:
+            id_to_symbol[cid_lower] = sym
+
+    if not id_to_symbol:
+        return {}
+
+    url = f"{_BASE}/api/v3/ticker/24hr"
+    params = {"symbols": json.dumps(list(id_to_symbol.values()))}
+    try:
+        async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
+            r = await client.get(url, params=params)
+        r.raise_for_status()
+    except httpx.HTTPStatusError as e:
+        raise BinanceError(f"ticker failed: HTTP {e.response.status_code}") from e
+    except httpx.HTTPError as e:
+        raise BinanceError(f"ticker failed: {e}") from e
+
+    symbol_to_id = {v: k for k, v in id_to_symbol.items()}
+    out: dict[str, dict] = {}
+    for item in r.json() or []:
+        sym = item.get("symbol")
+        cid = symbol_to_id.get(sym)
+        if not cid:
+            continue
+        try:
+            price = float(item["lastPrice"])
+            change = float(item["priceChangePercent"])
+        except (KeyError, ValueError, TypeError):
+            continue
+        out[cid] = {"usd": price, "usd_24h_change": change}
+    return out
 
 
 async def fetch_history_usd(coingecko_id: str, since: date, until: date) -> dict[date, float]:

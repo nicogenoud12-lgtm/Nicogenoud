@@ -71,8 +71,13 @@ async def build_report(db: Session, user_id: int) -> dict:
         try:
             prices = await coingecko.get_prices(ids, vs_currencies=["usd"], include_24h_change=True)
         except CoinGeckoError as e:
-            fetch_error = str(e)
-            log.warning("crypto report: %s", e)
+            log.warning("crypto report: CoinGecko failed (%s) — trying Binance", e)
+            try:
+                prices = await binance_svc.get_prices(ids)
+                log.info("crypto report: using Binance prices for %d coins", len(prices))
+            except BinanceError as e2:
+                fetch_error = str(e2)
+                log.warning("crypto report: Binance fallback also failed: %s", e2)
 
     ars_rate, dolar_src = await _get_dolar_rate(db)
 
