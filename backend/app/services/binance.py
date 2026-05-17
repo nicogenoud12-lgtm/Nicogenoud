@@ -6,6 +6,7 @@ to lift rate limits and reduce geo-blocking on cloud server IPs.
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import os
@@ -112,6 +113,46 @@ async def get_prices(coingecko_ids: list[str]) -> dict[str, dict]:
             continue
         out[cid] = {"usd": price, "usd_24h_change": change}
     return out
+
+
+async def get_7d_changes(coingecko_ids: list[str]) -> dict[str, float]:
+    """Return {coingecko_id: pct_change_7d} computed from daily klines.
+
+    One klines request per coin in parallel — well under Binance's rate limit.
+    Coins without a Binance mapping or with <8 candles are omitted.
+    """
+    headers = _headers()
+
+    async def fetch_one(client: httpx.AsyncClient, cid_lower: str) -> tuple[str, float | None]:
+        symbol = _CGID_TO_SYMBOL.get(cid_lower)
+        if not symbol:
+            return cid_lower, None
+        try:
+            r = await client.get(
+                f"{_BASE}/api/v3/klines",
+                params={"symbol": symbol, "interval": "1d", "limit": "8"},
+            )
+            r.raise_for_status()
+            data = r.json() or []
+            if len(data) < 8:
+                return cid_lower, None
+            # data[0] is the oldest candle (~7 days ago), data[-1] is the current day.
+            close_7d_ago = float(data[0][4])
+            close_now = float(data[-1][4])
+            if close_7d_ago == 0:
+                return cid_lower, None
+            return cid_lower, (close_now - close_7d_ago) / close_7d_ago * 100
+        except (httpx.HTTPError, ValueError, IndexError, TypeError) as e:
+            log.warning("binance 7d change failed for %s: %s", symbol, e)
+            return cid_lower, None
+
+    cids = [(cid or "").strip().lower() for cid in coingecko_ids]
+    cids = [c for c in cids if c]
+    if not cids:
+        return {}
+    async with httpx.AsyncClient(timeout=_TIMEOUT, headers=headers) as client:
+        results = await asyncio.gather(*[fetch_one(client, c) for c in cids])
+    return {cid: pct for cid, pct in results if pct is not None}
 
 
 async def fetch_history_usd(coingecko_id: str, since: date, until: date) -> dict[date, float]:

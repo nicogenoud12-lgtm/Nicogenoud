@@ -197,6 +197,7 @@ class CryptoReportItem(BaseModel):
     pnl_usd: Optional[float]
     pnl_pct: Optional[float]
     change_24h_pct: Optional[float]
+    change_7d_pct: Optional[float] = None
     pct_portfolio: float
     exchange: Optional[str]
     has_price: bool

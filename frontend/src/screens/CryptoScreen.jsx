@@ -281,6 +281,7 @@ export default function CryptoScreen() {
         pnl_usd: null,
         pnl_pct: null,
         change_24h_pct: null,
+        change_7d_pct: null,
         pct_portfolio: 0,
         exchange: h.exchange,
         has_price: false,
@@ -614,6 +615,12 @@ export default function CryptoScreen() {
                   </th>
                   <th
                     className="px-3 py-2 text-right cursor-pointer select-none hover:text-text"
+                    onClick={() => toggleSort("change_7d_pct")}
+                  >
+                    7d{sortIndicator("change_7d_pct")}
+                  </th>
+                  <th
+                    className="px-3 py-2 text-right cursor-pointer select-none hover:text-text"
                     onClick={() => toggleSort("value_usd")}
                   >
                     Valor{sortIndicator("value_usd")}
@@ -695,6 +702,22 @@ export default function CryptoScreen() {
                           >
                             {it.change_24h_pct >= 0 ? "+" : ""}
                             {it.change_24h_pct.toFixed(2)}%
+                          </span>
+                        ) : (
+                          "—"
+                        )}
+                      </td>
+                      <td className="px-3 py-2 text-right tabular-nums">
+                        {it.change_7d_pct != null ? (
+                          <span
+                            className={
+                              it.change_7d_pct >= 0
+                                ? "text-success"
+                                : "text-danger"
+                            }
+                          >
+                            {it.change_7d_pct >= 0 ? "+" : ""}
+                            {it.change_7d_pct.toFixed(2)}%
                           </span>
                         ) : (
                           "—"

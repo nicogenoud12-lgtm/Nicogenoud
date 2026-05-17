@@ -87,6 +87,15 @@ async def build_report(db: Session, user_id: int) -> dict:
                     fetch_error = str(e)
                 log.warning("crypto report: CoinGecko gap-fill failed: %s", e)
 
+        # 7d change is computed from Binance daily klines (parallel requests).
+        try:
+            changes_7d = await binance_svc.get_7d_changes(ids)
+        except Exception as e:
+            log.warning("crypto report: 7d change fetch failed: %s", e)
+            changes_7d = {}
+    else:
+        changes_7d = {}
+
     ars_rate, dolar_src = await _get_dolar_rate(db)
 
     items: list[dict] = []
@@ -101,13 +110,17 @@ async def build_report(db: Session, user_id: int) -> dict:
 
         price_usd: Optional[float] = None
         change_24h: Optional[float] = None
+        change_7d: Optional[float] = None
         if h.coingecko_id:
-            info = prices.get(h.coingecko_id.lower())
+            cid_lower = h.coingecko_id.lower()
+            info = prices.get(cid_lower)
             if info:
                 if info.get("usd") is not None:
                     price_usd = float(info["usd"])
                 if info.get("usd_24h_change") is not None:
                     change_24h = float(info["usd_24h_change"])
+            if cid_lower in changes_7d:
+                change_7d = float(changes_7d[cid_lower])
         else:
             missing.append(h.symbol)
 
@@ -142,6 +155,7 @@ async def build_report(db: Session, user_id: int) -> dict:
                 "pnl_usd": pnl_usd,
                 "pnl_pct": pnl_pct,
                 "change_24h_pct": change_24h,
+                "change_7d_pct": change_7d,
                 "exchange": h.exchange,
                 "has_price": price_usd is not None,
                 "pct_portfolio": 0.0,
