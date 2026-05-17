@@ -44,6 +44,15 @@ export default function PortfolioLineChart({ data, selectedClass }) {
     return `${sign}${Math.round(abs)}`;
   };
 
+  const yDomain = useMemo(() => {
+    const vals = series.map((d) => d[dataKey]).filter((v) => v != null && isFinite(v));
+    if (vals.length === 0) return [0, "auto"];
+    const min = Math.min(...vals);
+    const max = Math.max(...vals);
+    const pad = currency === "USD" ? 150 : 200_000;
+    return [min - pad, max + pad];
+  }, [series, dataKey, currency]);
+
   return (
     <div className="card p-4 h-80">
       <div className="flex items-baseline justify-between mb-2">
@@ -74,6 +83,7 @@ export default function PortfolioLineChart({ data, selectedClass }) {
             tick={{ fill: t.axis, fontSize: 10 }}
             stroke={t.grid}
             width={44}
+            domain={yDomain}
           />
           <Tooltip
             wrapperStyle={{ zIndex: 50 }}
