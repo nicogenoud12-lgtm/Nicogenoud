@@ -5,6 +5,7 @@ us well under the 30 req/min rate limit during normal page reloads.
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 import time
 from datetime import date, datetime, timezone
@@ -162,12 +163,24 @@ async def fetch_history_usd(coingecko_id: str, since: date, until: date) -> dict
     )
     url = f"{_BASE}/coins/{cid}/market_chart/range"
     params = {"vs_currency": "usd", "from": str(ts_from), "to": str(ts_to)}
-    try:
-        async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
-            r = await client.get(url, params=params)
-        r.raise_for_status()
-    except httpx.HTTPError as e:
-        raise CoinGeckoError(f"history failed for {cid}: {e}") from e
+    for attempt in range(2):
+        try:
+            async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
+                r = await client.get(url, params=params)
+            if r.status_code == 429:
+                retry_after = int(r.headers.get("Retry-After", "60"))
+                log.warning("CoinGecko 429 for %s — sleeping %ds", cid, retry_after)
+                if attempt == 0:
+                    await asyncio.sleep(retry_after)
+                    continue
+                raise CoinGeckoError(f"history rate-limited for {cid} (429)")
+            r.raise_for_status()
+        except httpx.HTTPStatusError as e:
+            raise CoinGeckoError(f"history failed for {cid}: HTTP {e.response.status_code}") from e
+        except httpx.HTTPError as e:
+            raise CoinGeckoError(f"history failed for {cid}: {e}") from e
+        break
+
     data = r.json() or {}
     out: dict[date, float] = {}
     for entry in data.get("prices") or []:

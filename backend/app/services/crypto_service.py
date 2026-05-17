@@ -5,6 +5,7 @@ Prices come in USD; ARS is derived using the user's configured dolar source
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 from datetime import date, datetime, timedelta, timezone
 from typing import Optional
@@ -13,7 +14,9 @@ from sqlalchemy.orm import Session
 
 from ..crud import get_setting
 from ..models import CryptoHolding, CryptoSnapshot, DolarQuote
+from . import binance as binance_svc
 from . import coingecko, dolar_service
+from .binance import BinanceError
 from .coingecko import CoinGeckoError
 
 log = logging.getLogger(__name__)
@@ -255,18 +258,36 @@ async def backfill_history(
     if resolved_count:
         log.info("backfill: auto-resolved coingecko_id for %d holdings", resolved_count)
 
-    # Pull historical USD prices per coin
+    # Pull historical USD prices per coin — CoinGecko first, Binance as fallback
     histories: dict[str, dict[date, float]] = {}
     failed: list[str] = []
-    for h in holdings:
+    for idx, h in enumerate(holdings):
         cid = (h.coingecko_id or "").strip().lower()
         if not cid:
             failed.append(h.symbol)
             continue
+        if idx > 0:
+            await asyncio.sleep(2)  # stay under CoinGecko free-tier rate limit
         try:
-            histories[cid] = await coingecko.fetch_history_usd(cid, since, until)
+            data = await coingecko.fetch_history_usd(cid, since, until)
+            if data:
+                histories[cid] = data
+                log.info("backfill: CoinGecko OK for %s (%d days)", h.symbol, len(data))
+                continue
+            log.warning("backfill: CoinGecko returned empty data for %s", h.symbol)
         except CoinGeckoError as e:
-            log.warning("backfill: history failed for %s (%s): %s", h.symbol, cid, e)
+            log.warning("backfill: CoinGecko failed for %s (%s): %s — trying Binance", h.symbol, cid, e)
+        # Binance fallback
+        try:
+            data = await binance_svc.fetch_history_usd(cid, since, until)
+            if data:
+                histories[cid] = data
+                log.info("backfill: Binance fallback OK for %s (%d days)", h.symbol, len(data))
+            else:
+                log.warning("backfill: Binance also returned empty for %s (no symbol mapping?)", h.symbol)
+                failed.append(h.symbol)
+        except BinanceError as e2:
+            log.warning("backfill: Binance fallback failed for %s: %s", h.symbol, e2)
             failed.append(h.symbol)
 
     if not histories:
