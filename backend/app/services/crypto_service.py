@@ -68,16 +68,24 @@ async def build_report(db: Session, user_id: int) -> dict:
     prices: dict[str, dict] = {}
     fetch_error: Optional[str] = None
     if ids:
+        # Binance first (1200 req/min, no key needed). CoinGecko fills any
+        # gaps for coins without a Binance USDT pair.
         try:
-            prices = await coingecko.get_prices(ids, vs_currencies=["usd"], include_24h_change=True)
-        except CoinGeckoError as e:
-            log.warning("crypto report: CoinGecko failed (%s) — trying Binance", e)
+            prices = await binance_svc.get_prices(ids)
+            log.info("crypto report: Binance returned prices for %d/%d coins", len(prices), len(ids))
+        except BinanceError as e:
+            log.warning("crypto report: Binance failed (%s) — trying CoinGecko", e)
+
+        missing = [cid for cid in ids if cid.lower() not in prices]
+        if missing:
             try:
-                prices = await binance_svc.get_prices(ids)
-                log.info("crypto report: using Binance prices for %d coins", len(prices))
-            except BinanceError as e2:
-                fetch_error = str(e2)
-                log.warning("crypto report: Binance fallback also failed: %s", e2)
+                cg_prices = await coingecko.get_prices(missing, vs_currencies=["usd"], include_24h_change=True)
+                prices.update(cg_prices)
+                log.info("crypto report: CoinGecko filled %d missing coins", len(cg_prices))
+            except CoinGeckoError as e:
+                if not prices:
+                    fetch_error = str(e)
+                log.warning("crypto report: CoinGecko gap-fill failed: %s", e)
 
     ars_rate, dolar_src = await _get_dolar_rate(db)
 
@@ -263,36 +271,36 @@ async def backfill_history(
     if resolved_count:
         log.info("backfill: auto-resolved coingecko_id for %d holdings", resolved_count)
 
-    # Pull historical USD prices per coin — CoinGecko first, Binance as fallback
+    # Pull historical USD prices per coin — Binance first (1200 req/min),
+    # CoinGecko fallback for coins without a Binance USDT pair.
     histories: dict[str, dict[date, float]] = {}
     failed: list[str] = []
-    for idx, h in enumerate(holdings):
+    for h in holdings:
         cid = (h.coingecko_id or "").strip().lower()
         if not cid:
             failed.append(h.symbol)
             continue
-        if idx > 0:
-            await asyncio.sleep(2)  # stay under CoinGecko free-tier rate limit
-        try:
-            data = await coingecko.fetch_history_usd(cid, since, until)
-            if data:
-                histories[cid] = data
-                log.info("backfill: CoinGecko OK for %s (%d days)", h.symbol, len(data))
-                continue
-            log.warning("backfill: CoinGecko returned empty data for %s", h.symbol)
-        except CoinGeckoError as e:
-            log.warning("backfill: CoinGecko failed for %s (%s): %s — trying Binance", h.symbol, cid, e)
-        # Binance fallback
+        # Try Binance first
         try:
             data = await binance_svc.fetch_history_usd(cid, since, until)
             if data:
                 histories[cid] = data
-                log.info("backfill: Binance fallback OK for %s (%d days)", h.symbol, len(data))
+                log.info("backfill: Binance OK for %s (%d days)", h.symbol, len(data))
+                continue
+        except BinanceError as e:
+            log.warning("backfill: Binance failed for %s: %s — trying CoinGecko", h.symbol, e)
+        # CoinGecko fallback (with delay to respect free-tier rate limit)
+        await asyncio.sleep(2)
+        try:
+            data = await coingecko.fetch_history_usd(cid, since, until)
+            if data:
+                histories[cid] = data
+                log.info("backfill: CoinGecko fallback OK for %s (%d days)", h.symbol, len(data))
             else:
-                log.warning("backfill: Binance also returned empty for %s (no symbol mapping?)", h.symbol)
+                log.warning("backfill: CoinGecko returned empty for %s", h.symbol)
                 failed.append(h.symbol)
-        except BinanceError as e2:
-            log.warning("backfill: Binance fallback failed for %s: %s", h.symbol, e2)
+        except CoinGeckoError as e2:
+            log.warning("backfill: CoinGecko fallback failed for %s: %s", h.symbol, e2)
             failed.append(h.symbol)
 
     if not histories:

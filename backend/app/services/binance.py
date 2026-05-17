@@ -1,12 +1,14 @@
 """Binance public API — live 24h ticker + daily Klines.
 
-Used as a fallback when CoinGecko rate-limits requests.
-No API key required for public market data.
+Used as the primary source for crypto prices (1200 req/min limit, no API key
+required for public market data). Optionally accepts BINANCE_API_KEY via env
+to lift rate limits and reduce geo-blocking on cloud server IPs.
 """
 from __future__ import annotations
 
 import json
 import logging
+import os
 from datetime import date, datetime, timezone
 
 import httpx
@@ -15,6 +17,12 @@ log = logging.getLogger(__name__)
 
 _BASE = "https://api.binance.com"
 _TIMEOUT = 15
+
+
+def _headers() -> dict[str, str]:
+    """Optional API key for higher rate limits / fewer geo-blocks."""
+    key = os.getenv("BINANCE_API_KEY", "").strip()
+    return {"X-MBX-APIKEY": key} if key else {}
 
 # CoinGecko ID → Binance quote asset (usually USDT; NEXO uses USDT too)
 _CGID_TO_SYMBOL: dict[str, str] = {
@@ -78,13 +86,15 @@ async def get_prices(coingecko_ids: list[str]) -> dict[str, dict]:
         return {}
 
     url = f"{_BASE}/api/v3/ticker/24hr"
-    params = {"symbols": json.dumps(list(id_to_symbol.values()))}
+    # Compact JSON (no spaces) is what Binance expects in the symbols param.
+    params = {"symbols": json.dumps(list(id_to_symbol.values()), separators=(",", ":"))}
     try:
-        async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
+        async with httpx.AsyncClient(timeout=_TIMEOUT, headers=_headers()) as client:
             r = await client.get(url, params=params)
         r.raise_for_status()
     except httpx.HTTPStatusError as e:
-        raise BinanceError(f"ticker failed: HTTP {e.response.status_code}") from e
+        body = (e.response.text or "")[:200]
+        raise BinanceError(f"ticker failed: HTTP {e.response.status_code} {body}") from e
     except httpx.HTTPError as e:
         raise BinanceError(f"ticker failed: {e}") from e
 
@@ -128,11 +138,12 @@ async def fetch_history_usd(coingecko_id: str, since: date, until: date) -> dict
         "limit": "1000",
     }
     try:
-        async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
+        async with httpx.AsyncClient(timeout=_TIMEOUT, headers=_headers()) as client:
             r = await client.get(url, params=params)
         r.raise_for_status()
     except httpx.HTTPStatusError as e:
-        raise BinanceError(f"klines failed for {symbol}: HTTP {e.response.status_code}") from e
+        body = (e.response.text or "")[:200]
+        raise BinanceError(f"klines failed for {symbol}: HTTP {e.response.status_code} {body}") from e
     except httpx.HTTPError as e:
         raise BinanceError(f"klines failed for {symbol}: {e}") from e
 
