@@ -17,6 +17,25 @@ import LoadingSpinner from "../components/LoadingSpinner.jsx";
 import { useUiStore } from "../store/uiStore";
 import { formatARS, formatNumber, formatUSD } from "../utils/format";
 
+// CoinGecko ID → CoinMarketCap URL slug (only exceptions; most match exactly)
+const CMC_SLUG_OVERRIDES = {
+  "binancecoin":       "binance-coin",
+  "polkadot":          "polkadot-new",
+  "avalanche-2":       "avalanche",
+  "matic-network":     "polygon",
+  "near":              "near-protocol",
+  "hedera-hashgraph":  "hedera",
+  "dai":               "multi-collateral-dai",
+  "dogwifcoin":        "dogwifhat",
+  "internet-computer": "internet-computer",
+};
+
+function cmcUrl(coingeckoId) {
+  if (!coingeckoId) return null;
+  const slug = CMC_SLUG_OVERRIDES[coingeckoId] || coingeckoId;
+  return `https://coinmarketcap.com/es/currencies/${slug}/`;
+}
+
 const EMPTY_FORM = {
   symbol: "",
   name: "",
@@ -643,7 +662,18 @@ export default function CryptoScreen() {
                       className="border-t border-border hover:bg-surfaceAlt/50"
                     >
                       <td className="px-3 py-2">
-                        <div className="font-medium">{it.symbol}</div>
+                        {cmcUrl(it.coingecko_id) ? (
+                          <a
+                            href={cmcUrl(it.coingecko_id)}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="font-medium hover:text-accent hover:underline"
+                          >
+                            {it.symbol}
+                          </a>
+                        ) : (
+                          <div className="font-medium">{it.symbol}</div>
+                        )}
                         <div className="text-xs text-textMuted">
                           {it.name || "—"}
                         </div>
