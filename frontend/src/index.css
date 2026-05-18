@@ -45,6 +45,12 @@ body {
   color: rgb(var(--c-text));
 }
 
+/* Remove browser focus ring on recharts SVG sectors */
+.recharts-sector:focus,
+.recharts-pie-sector:focus {
+  outline: none;
+}
+
 ::-webkit-scrollbar {
   width: 10px;
   height: 10px;

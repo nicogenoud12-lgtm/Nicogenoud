@@ -32,6 +32,8 @@ class IolStatusResponse(BaseModel):
     iol_username: Optional[str] = None
     connected_at: Optional[datetime] = None
     access_expires_at: Optional[datetime] = None
+    refresh_expires_at: Optional[datetime] = None
+    last_keepalive_at: Optional[datetime] = None
     last_error: Optional[str] = None
 
 
@@ -69,8 +71,7 @@ class KpisResponse(BaseModel):
     dolar_rate: float
     dolar_source: str
     pnl_no_realizada_ars: float
-    pnl_realizada_2026_ars: float
-    pnl_realizada_2026_usd: float
+    pnl_no_realizada_usd: float
     dividendos_2026_ars: float
     dividendos_2026_usd: float
     renta_2026_ars: float
@@ -117,6 +118,8 @@ class OperationsSummary(BaseModel):
     total_dividendos_usd: float
     total_renta_ars: float
     total_renta_usd: float
+    fx_source: str = "MEP"
+    fx_missing_count: int = 0
     by_simbolo: list[dict[str, Any]]
     by_mes: list[dict[str, Any]]
 
@@ -141,6 +144,7 @@ class SnapshotOut(BaseModel):
     dolar_rate: float
     dolar_source: str
     source: str
+    breakdown_json: list = []
 
     class Config:
         from_attributes = True
@@ -152,3 +156,78 @@ class SettingsResponse(BaseModel):
 
 class SettingsUpdate(BaseModel):
     settings: dict[str, str] = Field(default_factory=dict)
+
+
+class CryptoHoldingIn(BaseModel):
+    symbol: str = Field(min_length=1, max_length=32)
+    name: Optional[str] = Field(default=None, max_length=128)
+    coingecko_id: Optional[str] = Field(default=None, max_length=64)
+    cantidad: float
+    costo_usd_unit: Optional[float] = None
+    exchange: Optional[str] = Field(default=None, max_length=64)
+    notas: Optional[str] = Field(default=None, max_length=500)
+
+
+class CryptoHoldingOut(CryptoHoldingIn):
+    id: int
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class CoinSearchResult(BaseModel):
+    id: str
+    symbol: str
+    name: str
+    thumb: Optional[str] = None
+    market_cap_rank: Optional[int] = None
+
+
+class CryptoReportItem(BaseModel):
+    id: int
+    symbol: str
+    name: Optional[str]
+    coingecko_id: Optional[str]
+    cantidad: float
+    costo_usd_unit: Optional[float]
+    costo_total_usd: Optional[float]
+    price_usd: Optional[float]
+    price_ars: Optional[float]
+    value_usd: Optional[float]
+    value_ars: Optional[float]
+    pnl_usd: Optional[float]
+    pnl_pct: Optional[float]
+    change_24h_pct: Optional[float]
+    change_7d_pct: Optional[float] = None
+    pct_portfolio: float
+    exchange: Optional[str]
+    has_price: bool
+
+
+class CryptoReport(BaseModel):
+    items: list[CryptoReportItem]
+    total_value_usd: float
+    total_value_ars: float
+    total_cost_usd: float
+    pnl_total_usd: float
+    pnl_total_pct: Optional[float]
+    ars_rate: float
+    dolar_source: str
+    fetched_at: datetime
+    missing_coingecko: list[str]
+    fetch_error: Optional[str] = None
+
+
+class CryptoSnapshotOut(BaseModel):
+    id: int
+    date: date
+    taken_at: datetime
+    total_usd: float
+    total_ars: float
+    cost_usd: float
+    dolar_rate: float
+
+    class Config:
+        from_attributes = True

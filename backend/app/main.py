@@ -5,7 +5,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .config import settings
-from .routers import auth, dolar, iol, operations, portfolio, settings as settings_router, snapshots
+from .routers import auth, crypto, dolar, iol, operations, portfolio, settings as settings_router, snapshots
 from .scheduler import start_scheduler, stop_scheduler
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
@@ -31,7 +31,7 @@ app.add_middleware(
 )
 
 API_PREFIX = "/api/v1"
-for r in (auth.router, iol.router, portfolio.router, operations.router, dolar.router, settings_router.router, snapshots.router):
+for r in (auth.router, iol.router, portfolio.router, operations.router, dolar.router, settings_router.router, snapshots.router, crypto.router):
     app.include_router(r, prefix=API_PREFIX)
 
 

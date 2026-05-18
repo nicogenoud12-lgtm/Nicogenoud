@@ -14,6 +14,7 @@ DEFAULT_SETTINGS = {
     "dolar_cron_evening": "50 23 * * *",
     "tz": "America/Argentina/Buenos_Aires",
     "operations_year": "2026",
+    "iol_keepalive_cron": "0 */12 * * *",
 }
 
 

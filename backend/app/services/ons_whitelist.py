@@ -14,9 +14,12 @@ matched here falls back to other heuristics in classifier.py.
 ON_BASE_TICKERS: set[str] = {
     # Mastellone Hnos
     "MRCA", "MR35", "MR36", "MR37", "MR38",
-    # YPF
+    # YPF — lettered series (YMCJ, YMCI, etc.)
     "YMCJ", "YMCI", "YMCH", "YMCK", "YMCM", "YMCN", "YMCO", "YMCP", "YMCQ",
     "YCAB", "YCAD", "YCA6",
+    # YPF — numbered series (YM30–YM42): suffix D=MEP, C=CCL, O/none=ARS
+    "YM30", "YM31", "YM32", "YM33", "YM34", "YM35", "YM36",
+    "YM37", "YM38", "YM39", "YM40", "YM41", "YM42",
     # Pampa Energía
     "MGC1", "MGC9", "MGC3", "MGCC", "MGCJ", "MGCK", "MGCL", "MGCM", "MGCN",
     "MGCH", "MGCO", "MGCP",
@@ -65,15 +68,21 @@ def normalize_ticker(simbolo: str) -> tuple[str, str]:
 
     Suffix is one of: '', 'D' (MEP), 'C' (CCL), 'O' (USD cable / dolar billete).
     Examples:
-        MRCAD  -> ('MRCA', 'D')
-        MR35D  -> ('MR35', 'D')
-        YMCJD  -> ('YMCJ', 'D')
-        YMCJC  -> ('YMCJ', 'C')
-        MRCA   -> ('MRCA', '')
+        MRCAD      -> ('MRCA', 'D')
+        MR35D      -> ('MR35', 'D')
+        YMCJD      -> ('YMCJ', 'D')
+        YMCJC      -> ('YMCJ', 'C')
+        MRCA       -> ('MRCA', '')
+        AAPL US$   -> ('AAPL', 'D')   # IOL CEDEAR dividend USD marker
+        HMY US$    -> ('HMY',  'D')
     """
     if not simbolo:
         return ("", "")
     s = simbolo.upper().strip()
+    # IOL uses " US$" / " USD" / " U$S" suffix on CEDEAR/dividend rows to signal USD
+    for marker in (" US$", " USD", " U$S"):
+        if s.endswith(marker):
+            return (s[: -len(marker)].strip(), "D")
     if len(s) >= 2 and s[-1] in {"D", "C", "O"}:
         base = s[:-1]
         return (base, s[-1])

@@ -3,7 +3,7 @@
 ## Qué es esta app
 
 Dashboard personal de inversiones conectado a la API de InvertirOnline (IOL).
-Corre en tu CasaOS vía Docker Compose y expone el puerto 8080 (apuntable a Cloudflare Tunnel).
+Corre en tu CasaOS vía Docker Compose y expone el puerto 8085 (apuntable a Cloudflare Tunnel).
 
 ---
 
@@ -121,7 +121,7 @@ sume pesos con dólar cable.
 APP_ENV=production
 TZ=America/Argentina/Buenos_Aires
 SQLITE_PATH=/data/app.db
-CORS_ORIGINS=http://10.0.0.69:8080,https://inversiones.genoud-nube.com.ar
+CORS_ORIGINS=http://10.0.0.69:8085,https://inversiones.genoud-nube.com.ar
 
 # Auth
 JWT_SECRET=           # openssl rand -hex 32
@@ -202,11 +202,11 @@ rsync -av /home/genoud/Nicogenoud/data/ /mnt/toshiba/backups/Nicogenoud/data/
 
 ## Cloudflare Tunnel
 
-Apuntá el tunnel a `http://localhost:8080` y agregá el dominio público a
+Apuntá el tunnel a `http://localhost:8085` y agregá el dominio público a
 `CORS_ORIGINS` en `backend/.env`:
 
 ```
-CORS_ORIGINS=http://10.0.0.69:8080,https://inversiones.genoud-nube.com.ar
+CORS_ORIGINS=http://10.0.0.69:8085,https://inversiones.genoud-nube.com.ar
 ```
 
 Luego `docker compose up -d --build` para que tome el nuevo env.

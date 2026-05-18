@@ -53,5 +53,7 @@ def _status_for(db: Session, user_id: int) -> IolStatusResponse:
         iol_username=cred.iol_username if cred else None,
         connected_at=cred.connected_at if cred else None,
         access_expires_at=tok.access_expires_at if tok else None,
+        refresh_expires_at=tok.refresh_expires_at if tok else None,
+        last_keepalive_at=tok.last_keepalive_at if tok else None,
         last_error=cred.last_error if cred else None,
     )

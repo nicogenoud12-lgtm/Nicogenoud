@@ -63,6 +63,9 @@ class OauthToken(Base):
         onupdate=func.now(),
         nullable=False,
     )
+    last_keepalive_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
 
 class Holding(Base):
@@ -169,6 +172,53 @@ class DolarQuote(Base):
     )
 
     __table_args__ = (UniqueConstraint("date", "source", name="uq_dolar_date_source"),)
+
+
+class CryptoHolding(Base):
+    __tablename__ = "crypto_holdings"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    symbol: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    name: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    coingecko_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    cantidad: Mapped[float] = mapped_column(Numeric(28, 12), nullable=False, default=0)
+    costo_usd_unit: Mapped[float | None] = mapped_column(Numeric(18, 8), nullable=True)
+    exchange: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    notas: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
+
+class CryptoSnapshot(Base):
+    __tablename__ = "crypto_snapshots"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+    taken_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    total_usd: Mapped[float] = mapped_column(Numeric(18, 2), nullable=False, default=0)
+    total_ars: Mapped[float] = mapped_column(Numeric(18, 2), nullable=False, default=0)
+    cost_usd: Mapped[float] = mapped_column(Numeric(18, 2), nullable=False, default=0)
+    dolar_rate: Mapped[float] = mapped_column(Numeric(18, 4), nullable=False, default=0)
+    breakdown_json: Mapped[dict | list] = mapped_column(JSON, nullable=False, default=list)
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "date", name="uq_crypto_snapshot_user_date"),
+    )
 
 
 class AppSetting(Base):

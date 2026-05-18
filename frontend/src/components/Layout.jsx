@@ -9,6 +9,7 @@ const NAV = [
   { to: "/tenencias", label: "Tenencias" },
   { to: "/operaciones", label: "Operaciones 2026" },
   { to: "/analisis", label: "Análisis" },
+  { to: "/crypto", label: "Crypto" },
   { to: "/ajustes", label: "Ajustes" },
 ];
 

@@ -9,7 +9,10 @@ from sqlalchemy.orm import Session
 
 from ..models import Operation
 from .classifier import classify_asset, classify_event
+from .dolar_service import backfill_historical_mep
 from .iol_client import IolClient
+
+_ENRICHABLE_KINDS = ("DIVIDENDO", "RENTA", "AMORTIZACION")
 
 log = logging.getLogger(__name__)
 
@@ -51,14 +54,26 @@ async def sync_operations(
     desde = date(year, 1, 1)
     hasta = hasta or date.today()
     async with IolClient(db, user_id) as client:
-        ops = await client.get_operaciones(estado="terminada", desde=desde, hasta=hasta)
+        ops = await client.get_operaciones(estado="terminadas", desde=desde, hasta=hasta)
+
+    log.info("sync_operations: IOL returned %d raw rows (user=%d, year=%d)", len(ops), user_id, year)
 
     touched = 0
+    skipped_no_numero = 0
     for raw in ops:
         if not isinstance(raw, dict):
             continue
-        numero = raw.get("numero") or raw.get("Numero") or raw.get("numeroOperacion")
+        numero = (
+            raw.get("numero")
+            or raw.get("Numero")
+            or raw.get("numeroOperacion")
+            or raw.get("numeroOrden")
+            or raw.get("id")
+        )
         if numero is None:
+            skipped_no_numero += 1
+            if skipped_no_numero <= 3:
+                log.warning("sync_operations: row without numero: keys=%s", list(raw.keys()))
             continue
         iol_numero = str(numero)
 
@@ -98,16 +113,84 @@ async def sync_operations(
         op.simbolo = _str(simbolo)
         op.descripcion = _str(descripcion)[:255] if descripcion else None
         op.mercado = _str(mercado)
-        op.cantidad = _f(raw.get("cantidad") or raw.get("cantidadOperada"))
+        op.cantidad = _f(raw.get("cantidadOperada") or raw.get("cantidad"))
         op.precio = _f(raw.get("precioOperado") or raw.get("precio"))
         op.monto_operado = _f(raw.get("montoOperado") or raw.get("monto"))
-        op.comisiones = _f(raw.get("comision") or raw.get("comisiones"))
-        op.derechos_mercado = _f(raw.get("derechosMercado"))
-        op.iva = _f(raw.get("iva"))
-        op.monto_neto = _f(raw.get("monto") or raw.get("netoOperado") or raw.get("montoNeto"))
+        op.comisiones = _f(raw.get("comision") or raw.get("comisiones")) or 0.0
+        op.derechos_mercado = _f(raw.get("derechosMercado")) or 0.0
+        op.iva = _f(raw.get("iva")) or 0.0
+
+        gross = op.monto_operado or 0.0
+        fees = (op.comisiones or 0.0) + (op.derechos_mercado or 0.0) + (op.iva or 0.0)
+        if event_kind in ("COMPRA", "SUSCRIPCION"):
+            op.monto_neto = -(gross + fees)
+        elif event_kind in ("VENTA", "RESCATE"):
+            op.monto_neto = gross - fees
+        else:
+            # DIVIDENDO/RENTA/AMORTIZACION/OTRO: bruto declarado; enriched below if /movimientos available
+            op.monto_neto = gross
         op.moneda = _str(moneda)
         op.raw_json = raw
         touched += 1
 
     db.commit()
+    log.info(
+        "sync_operations: upserted=%d skipped_no_numero=%d user=%d year=%d",
+        touched, skipped_no_numero, user_id, year,
+    )
+
+    # Enrich dividends/renta with net amounts from /movimientos
+    enriched = await _enrich_with_movimientos(db, user_id, desde, hasta)
+    log.info("sync_operations: enriched %d dividend/renta rows from movimientos", enriched)
+
+    # Backfill historical MEP rates so pnl.py can convert amounts to a single currency
+    inserted_mep = await backfill_historical_mep(db, desde=desde, hasta=date.today())
+    if inserted_mep:
+        log.info("sync_operations: backfilled %d MEP historical rows", inserted_mep)
+
     return touched
+
+
+async def _enrich_with_movimientos(
+    db: Session,
+    user_id: int,
+    desde: date,
+    hasta: date,
+) -> int:
+    """Overwrite monto_neto for renta/dividendos with the net from IOL /movimientos."""
+    async with IolClient(db, user_id) as client:
+        try:
+            moves = await client.get_movimientos(desde=desde, hasta=hasta)
+        except Exception as e:
+            log.warning("movimientos fetch failed — skipping net enrichment: %s", e)
+            return 0
+
+    if not moves:
+        return 0
+
+    by_numero = {str(m.get("numero") or m.get("id") or ""): m for m in moves if isinstance(m, dict)}
+
+    ops = (
+        db.query(Operation)
+        .filter(
+            Operation.user_id == user_id,
+            Operation.event_kind.in_(_ENRICHABLE_KINDS),
+            Operation.fecha_operada >= desde,
+            Operation.fecha_operada <= hasta,
+        )
+        .all()
+    )
+
+    updated = 0
+    for op in ops:
+        m = by_numero.get(op.iol_numero)
+        if not m:
+            continue
+        neto = _f(m.get("monto") or m.get("importe") or m.get("montoNeto"))
+        if neto is not None and neto != 0:
+            op.monto_neto = abs(neto)  # movimientos siempre positivos para créditos
+            updated += 1
+
+    if updated:
+        db.commit()
+    return updated

@@ -107,7 +107,7 @@ def classify_asset(
 
 
 def _currency_kind_from(
-    *, simbolo: Optional[str], moneda: Optional[str]
+    *, simbolo: Optional[str], moneda: Optional[str], asset_class: Optional[str] = None
 ) -> CurrencyKind:
     sym = (simbolo or "").upper().strip()
     _, suffix = normalize_ticker(sym)
@@ -116,6 +116,9 @@ def _currency_kind_from(
     if suffix == "C":
         return "USD_CABLE"
     if suffix == "O":
+        # ONs argentinas with suffix O are ARS, not USD_CABLE
+        if asset_class == "ON":
+            return "ARS"
         return "USD_CABLE"
 
     m = _norm(moneda)
@@ -188,5 +191,5 @@ def classify_event(
             )
             ev = "OTRO"
 
-    cur = _currency_kind_from(simbolo=simbolo, moneda=moneda)
+    cur = _currency_kind_from(simbolo=simbolo, moneda=moneda, asset_class=asset_class)
     return ev, cur

@@ -144,7 +144,7 @@ async def get_valid_access_token(db: Session, user_id: int, *, force_refresh: bo
             exp = token_row.access_expires_at
             if exp.tzinfo is None:
                 exp = exp.replace(tzinfo=timezone.utc)
-            if exp - now > timedelta(seconds=60):
+            if exp - now > timedelta(seconds=120):
                 return decrypt(token_row.access_token_enc)
 
         # Try refresh first
@@ -165,5 +165,6 @@ async def get_valid_access_token(db: Session, user_id: int, *, force_refresh: bo
             cred.last_error = str(e)[:500]
             db.commit()
             raise
+        cred.last_error = None
         _persist_tokens(db, user_id, ts)
         return ts.access_token
