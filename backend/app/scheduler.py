@@ -5,11 +5,12 @@ import logging
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
+from apscheduler.triggers.interval import IntervalTrigger
 from sqlalchemy.orm import Session
 
 from .crud import get_setting
 from .database import SessionLocal
-from .jobs import crypto_snapshot_job, dolar_job, iol_keepalive, operations_sync, snapshot_job
+from .jobs import crypto_snapshot_job, dolar_job, holdings_refresh_job, iol_keepalive, operations_sync, snapshot_job
 
 log = logging.getLogger(__name__)
 
@@ -56,9 +57,17 @@ def start_scheduler() -> AsyncIOScheduler | None:
     sched.add_job(dolar_job.run, _cron(dolar_morning, tz), id="dolar_morning", replace_existing=True)
     sched.add_job(dolar_job.run, _cron(dolar_evening, tz), id="dolar_evening", replace_existing=True)
     sched.add_job(iol_keepalive.run, _cron(keepalive_cron, tz), id="iol_keepalive", replace_existing=True)
+    sched.add_job(
+        holdings_refresh_job.run,
+        IntervalTrigger(minutes=5),
+        id="holdings_refresh",
+        replace_existing=True,
+        max_instances=1,
+        coalesce=True,
+    )
     sched.start()
     _scheduler = sched
-    log.info("scheduler started tz=%s snapshot=%s keepalive=%s", tz, snapshot_cron, keepalive_cron)
+    log.info("scheduler started tz=%s snapshot=%s keepalive=%s holdings_refresh=5min", tz, snapshot_cron, keepalive_cron)
     return sched
 
 
