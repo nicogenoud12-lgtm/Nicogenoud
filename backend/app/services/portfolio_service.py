@@ -19,6 +19,14 @@ from .iol_client import IolClient
 log = logging.getLogger(__name__)
 
 
+def _first_not_none(*vals):
+    """Return the first non-None value as float, or None if all are None."""
+    for v in vals:
+        if v is not None:
+            return _f(v)
+    return None
+
+
 def _f(v) -> float:
     if v is None:
         return 0.0
@@ -66,12 +74,12 @@ def _extract_row(activo: dict, mercado: str) -> dict | None:
         ),
         "ganancia_porcentaje": _f(activo.get("gananciaPorcentaje")),
         "ganancia_dinero": _f(activo.get("gananciaDinero")),
-        "variacion_dia": _f(
-            activo.get("variacion")
-            or titulo.get("variacion")
-            or activo.get("variacionPorcentaje")
-            or titulo.get("variacionPorcentaje")
-        ) or None,
+        "variacion_dia": _first_not_none(
+            activo.get("variacion"),
+            titulo.get("variacion"),
+            activo.get("variacionPorcentaje"),
+            titulo.get("variacionPorcentaje"),
+        ),
         "moneda": moneda,
     }
 

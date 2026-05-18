@@ -12,13 +12,15 @@ import { formatARS, formatUSD, formatDate } from "../utils/format";
 import { useUiStore } from "../store/uiStore";
 import { periodToDays } from "../utils/periods";
 
-function MoversTable({ items, currency, fmt, emptyMsg }) {
-  if (!items.length) return <div className="text-sm text-textMuted py-2">{emptyMsg}</div>;
+function MoversTable({ items, currency, fmt }) {
+  if (!items.length) {
+    return <div className="text-sm text-textMuted py-2">Sin datos del día disponibles.</div>;
+  }
   return (
     <ul className="divide-y divide-border">
       {items.map((h) => {
         const val = currency === "USD" ? h.valuacion_usd : h.valuacion_ars;
-        const pct = h.variacion_dia ?? h.ganancia_porcentaje ?? 0;
+        const pct = h.variacion_dia;
         const isPos = pct >= 0;
         return (
           <li key={h.id} className="py-2 flex items-center justify-between gap-2">
@@ -30,9 +32,6 @@ function MoversTable({ items, currency, fmt, emptyMsg }) {
               <div className="text-sm">{fmt(val)}</div>
               <div className={`text-xs font-semibold ${isPos ? "text-success" : "text-danger"}`}>
                 {isPos ? "+" : ""}{Number(pct).toFixed(2)}%
-                {h.variacion_dia == null && (
-                  <span className="ml-1 text-textMuted font-normal opacity-60" title="P&L desde costo (dato diario no disponible)">*</span>
-                )}
               </div>
             </div>
           </li>
@@ -72,7 +71,7 @@ function UpcomingPayments({ events, currency, fmt }) {
               </td>
               <td className="py-2 pr-4 tabular-nums text-sm">{e.estimated_date}</td>
               <td className="py-2 text-right tabular-nums">
-                {e.currency_kind !== "ARS"
+                {e.currency_kind?.startsWith("USD")
                   ? `USD ${Number(e.last_amount).toLocaleString("es-AR", { minimumFractionDigits: 2 })}`
                   : formatARS(e.last_amount)
                 }
@@ -122,18 +121,15 @@ export default function ResumenScreen() {
 
   const allHoldings = holdings.data || [];
 
-  // Sorted by variacion_dia first, fallback to ganancia_porcentaje
-  const sortKey = (h) => h.variacion_dia ?? h.ganancia_porcentaje ?? 0;
-  const sortedHoldings = [...allHoldings].sort((a, b) => sortKey(b) - sortKey(a));
-  const gainers = sortedHoldings.slice(0, 10);
-  const losers = [...allHoldings].sort((a, b) => sortKey(a) - sortKey(b)).slice(0, 10);
+  // Only holdings with actual daily data from IOL
+  const withDaily = allHoldings.filter((h) => h.variacion_dia != null);
+  const gainers = [...withDaily].sort((a, b) => b.variacion_dia - a.variacion_dia).slice(0, 10);
+  const losers = [...withDaily].sort((a, b) => a.variacion_dia - b.variacion_dia).slice(0, 10);
 
   const allSorted = [...allHoldings].sort((a, b) => Number(b.valuacion_ars) - Number(a.valuacion_ars));
   const displayHoldings = selectedClass
     ? allSorted.filter((h) => h.clase === selectedClass)
     : allSorted.slice(0, 5);
-
-  const hasDailyData = allHoldings.some((h) => h.variacion_dia != null);
 
   return (
     <div className="space-y-6">
@@ -173,19 +169,14 @@ export default function ResumenScreen() {
       </div>
 
       {/* Movers */}
-      {!hasDailyData && (
-        <div className="text-xs text-textMuted">
-          * Variación diaria no disponible desde IOL en este momento. Se muestra P&L desde costo como referencia.
-        </div>
-      )}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <div className="card p-4">
-          <div className="label mb-3">Más subieron {hasDailyData ? "hoy" : "(P&L)"}</div>
-          <MoversTable items={gainers} currency={currency} fmt={fmt} emptyMsg="Sin tenencias." />
+          <div className="label mb-3">Más subieron hoy</div>
+          <MoversTable items={gainers} currency={currency} fmt={fmt} />
         </div>
         <div className="card p-4">
-          <div className="label mb-3">Más bajaron {hasDailyData ? "hoy" : "(P&L)"}</div>
-          <MoversTable items={losers} currency={currency} fmt={fmt} emptyMsg="Sin tenencias." />
+          <div className="label mb-3">Más bajaron hoy</div>
+          <MoversTable items={losers} currency={currency} fmt={fmt} />
         </div>
       </div>
 
