@@ -26,7 +26,9 @@ export default function AnalisisScreen() {
   const [selectedClass, setSelectedClass] = useState(null);
   const [snapPeriod, setSnapPeriod] = useState("MAX");
   const [opsPeriod, setOpsPeriod] = useState("YTD");
+  const [cryptoSnapPeriod, setCryptoSnapPeriod] = useState("MAX");
   const snapDays = periodToDays(snapPeriod);
+  const cryptoSnapDays = periodToDays(cryptoSnapPeriod);
   const { fromDate: opsFrom, toDate: opsTo } = periodToDates(opsPeriod);
 
   const kpis     = useQuery({ queryKey: ["kpis"], queryFn: getKpis });
@@ -34,7 +36,7 @@ export default function AnalisisScreen() {
   const snaps    = useQuery({ queryKey: ["snapshots", snapDays], queryFn: () => listSnapshots(snapDays) });
   const sum      = useQuery({ queryKey: ["opsSummary", opsFrom, opsTo], queryFn: () => operationsSummary({ fromDate: opsFrom, toDate: opsTo }) });
   const cryptoR  = useQuery({ queryKey: ["crypto-report"], queryFn: getCryptoReport, staleTime: 60_000 });
-  const cryptoSn = useQuery({ queryKey: ["crypto-snapshots", 365], queryFn: () => listCryptoSnapshots(365) });
+  const cryptoSn = useQuery({ queryKey: ["crypto-snapshots", cryptoSnapDays], queryFn: () => listCryptoSnapshots(cryptoSnapDays) });
 
   // --- IOL performers ---
   const performers = useMemo(() => {
@@ -150,7 +152,12 @@ export default function AnalisisScreen() {
       />
 
       <SectionTitle>Evolución Crypto</SectionTitle>
-      <PortfolioLineChart data={cryptoSn.data || []} />
+      <PortfolioLineChart
+        data={cryptoSn.data || []}
+        period={cryptoSnapPeriod}
+        onPeriodChange={setCryptoSnapPeriod}
+        title="Evolución Crypto"
+      />
 
       {/* ── PERFORMERS ───────────────────────────────────────────── */}
       <SectionTitle>Performers IOL</SectionTitle>

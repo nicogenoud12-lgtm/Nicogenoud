@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { periodToDays } from "../utils/periods";
 import {
   backfillCryptoSnapshots,
   createCryptoHolding,
@@ -144,6 +145,8 @@ export default function CryptoScreen() {
   const [editingId, setEditingId] = useState(null);
   const [form, setForm] = useState(EMPTY_FORM);
   const [showForm, setShowForm] = useState(false);
+  const [snapPeriod, setSnapPeriod] = useState("MAX");
+  const snapDays = periodToDays(snapPeriod);
 
   const holdings = useQuery({
     queryKey: ["crypto-holdings"],
@@ -158,14 +161,14 @@ export default function CryptoScreen() {
     refetchOnMount: true,
   });
   const snaps = useQuery({
-    queryKey: ["crypto-snapshots", 180],
-    queryFn: () => listCryptoSnapshots(180),
+    queryKey: ["crypto-snapshots", snapDays],
+    queryFn: () => listCryptoSnapshots(snapDays),
   });
 
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: ["crypto-holdings"] });
     qc.invalidateQueries({ queryKey: ["crypto-report"] });
-    qc.invalidateQueries({ queryKey: ["crypto-snapshots", 180] });
+    qc.invalidateQueries({ queryKey: ["crypto-snapshots"] });
   };
 
   const createM = useMutation({
@@ -189,7 +192,7 @@ export default function CryptoScreen() {
   const backfillM = useMutation({
     mutationFn: () => backfillCryptoSnapshots(),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["crypto-snapshots", 180] });
+      qc.invalidateQueries({ queryKey: ["crypto-snapshots"] });
     },
   });
 
@@ -418,7 +421,12 @@ export default function CryptoScreen() {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <div className="lg:col-span-2">
-          <PortfolioLineChart data={snaps.data || []} />
+          <PortfolioLineChart
+            data={snaps.data || []}
+            period={snapPeriod}
+            onPeriodChange={setSnapPeriod}
+            title="Evolución Crypto"
+          />
         </div>
         {distribution.length > 0 ? (
           <AssetDonutChart data={distribution} />
