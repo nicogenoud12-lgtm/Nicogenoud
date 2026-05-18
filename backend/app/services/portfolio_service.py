@@ -8,6 +8,8 @@ from typing import Iterable
 
 from sqlalchemy.orm import Session
 
+from datetime import timedelta
+
 from ..models import Holding, Operation, PortfolioSnapshot
 from . import dolar_service
 from .classifier import classify_asset
@@ -64,6 +66,12 @@ def _extract_row(activo: dict, mercado: str) -> dict | None:
         ),
         "ganancia_porcentaje": _f(activo.get("gananciaPorcentaje")),
         "ganancia_dinero": _f(activo.get("gananciaDinero")),
+        "variacion_dia": _f(
+            activo.get("variacion")
+            or titulo.get("variacion")
+            or activo.get("variacionPorcentaje")
+            or titulo.get("variacionPorcentaje")
+        ) or None,
         "moneda": moneda,
     }
 
@@ -128,6 +136,7 @@ async def refresh_holdings(db: Session, user_id: int) -> list[Holding]:
             holding.valuacion_usd = valuacion_usd
             holding.ganancia_porcentaje = row_data["ganancia_porcentaje"]
             holding.ganancia_dinero = row_data["ganancia_dinero"]
+            holding.variacion_dia = row_data.get("variacion_dia")
             holding.moneda = row_data["moneda"]
             rows.append(holding)
 
@@ -217,6 +226,62 @@ def compute_kpis(db: Session, user_id: int, *, dolar_rate: float, dolar_source: 
         "n_operaciones_2026": n_ops_2026,
         "distribucion_por_clase": distribucion,
     }
+
+
+def upcoming_events(db: Session, user_id: int) -> list[dict]:
+    """Estimate upcoming RENTA/AMORTIZACION payments for held ONs and Bonos."""
+    bond_classes = ("ON", "Bono", "Letra")
+    holdings = (
+        db.query(Holding)
+        .filter(Holding.user_id == user_id, Holding.clase.in_(bond_classes))
+        .all()
+    )
+    today = date.today()
+    results = []
+    for h in holdings:
+        events = (
+            db.query(Operation)
+            .filter(
+                Operation.user_id == user_id,
+                Operation.simbolo == h.simbolo,
+                Operation.event_kind.in_(["RENTA", "AMORTIZACION"]),
+            )
+            .order_by(Operation.fecha_operada.desc())
+            .limit(5)
+            .all()
+        )
+        if not events:
+            continue
+
+        last = events[0]
+        if not last.fecha_operada:
+            continue
+
+        # Estimate interval from last 2 payments; fallback by class
+        if len(events) >= 2 and events[1].fecha_operada:
+            interval = abs((events[0].fecha_operada - events[1].fecha_operada).days)
+            interval = max(interval, 14)  # floor at 2 weeks
+        else:
+            interval = 30 if h.clase == "ON" else 180
+
+        next_date = last.fecha_operada + timedelta(days=interval)
+        while next_date <= today:
+            next_date += timedelta(days=interval)
+
+        last_amount = abs(_f(last.monto_neto) if last.monto_neto is not None else _f(last.monto_operado))
+        results.append({
+            "simbolo": h.simbolo,
+            "descripcion": h.descripcion or h.simbolo,
+            "clase": h.clase,
+            "event_kind": last.event_kind,
+            "estimated_date": next_date.isoformat(),
+            "last_amount": round(last_amount, 2),
+            "currency_kind": last.currency_kind,
+            "interval_days": interval,
+        })
+
+    results.sort(key=lambda x: x["estimated_date"])
+    return results
 
 
 def save_snapshot(

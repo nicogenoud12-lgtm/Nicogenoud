@@ -20,10 +20,11 @@ export default function App() {
           </ProtectedRoute>
         }
       >
-        <Route index element={<ResumenScreen />} />
+        <Route index element={<AnalisisScreen />} />
+        <Route path="inversiones" element={<ResumenScreen />} />
         <Route path="tenencias" element={<TenenciasScreen />} />
         <Route path="operaciones" element={<OperacionesScreen />} />
-        <Route path="analisis" element={<AnalisisScreen />} />
+        <Route path="analisis" element={<Navigate to="/" replace />} />
         <Route path="crypto" element={<CryptoScreen />} />
         <Route path="ajustes" element={<AjustesScreen />} />
       </Route>

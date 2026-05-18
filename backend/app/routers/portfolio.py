@@ -1,4 +1,5 @@
 from datetime import date
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
@@ -52,3 +53,11 @@ async def kpis(
         db, user.id, dolar_rate=dolar_rate, dolar_source=dolar_source
     )
     return data
+
+
+@router.get("/upcoming-events", response_model=list[dict[str, Any]])
+def upcoming_events(
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    return portfolio_service.upcoming_events(db, user.id)

@@ -13,7 +13,7 @@ import { formatARS, formatDateShort, formatUSD } from "../../utils/format";
 import { useChartTokens } from "./chartTheme";
 import PeriodFilter from "./PeriodFilter";
 
-export default function PortfolioLineChart({ data, selectedClass, period, onPeriodChange }) {
+export default function PortfolioLineChart({ data, selectedClass, period, onPeriodChange, title, className }) {
   const currency = useUiStore((s) => s.currency);
   const t = useChartTokens();
   const dataKey = currency === "USD" ? "total_usd" : "total_ars";
@@ -55,11 +55,11 @@ export default function PortfolioLineChart({ data, selectedClass, period, onPeri
   }, [series, dataKey, currency]);
 
   return (
-    <div className="card p-4 h-80">
+    <div className={`card p-4 ${className || "h-80"}`}>
       <div className="flex items-center justify-between mb-2">
         <div>
           <div className="label">
-            Evolución de cartera
+            {title || "Evolución de cartera"}
             {selectedClass && (
               <span className="ml-2 normal-case font-normal text-accent">
                 · {selectedClass}
