@@ -46,7 +46,7 @@ def test_converts_to_both_currencies(db, user):
     ))
     db.commit()
 
-    s = operations_summary(db, user.id, year=2026)
+    s = operations_summary(db, user.id, from_date=date(2026, 1, 1), to_date=date(2026, 12, 31))
 
     # ARS total: 150.000 (nativa) + 100 × 1600 = 310.000
     assert s["total_renta_ars"] == 310_000.00
@@ -65,7 +65,7 @@ def test_missing_fx_uses_native_currency_only(db, user):
     ))
     db.commit()
 
-    s = operations_summary(db, user.id, year=2026)
+    s = operations_summary(db, user.id, from_date=date(2026, 1, 1), to_date=date(2026, 12, 31))
 
     assert s["fx_missing_count"] == 1
     assert s["total_dividendos_usd"] == 50.00
@@ -84,7 +84,7 @@ def test_fallback_to_nearest_date(db, user):
     ))
     db.commit()
 
-    s = operations_summary(db, user.id, year=2026)
+    s = operations_summary(db, user.id, from_date=date(2026, 1, 1), to_date=date(2026, 12, 31))
 
     # Falls back to 2026-03-02 rate (nearest next date)
     assert s["total_compras_ars"] == 200 * 1500
@@ -101,7 +101,7 @@ def test_amortizacion_counts_in_renta_bucket(db, user):
     ))
     db.commit()
 
-    s = operations_summary(db, user.id, year=2026)
+    s = operations_summary(db, user.id, from_date=date(2026, 1, 1), to_date=date(2026, 12, 31))
 
     assert s["total_renta_usd"] == 300.00
     assert s["total_renta_ars"] == 300 * 1500
@@ -117,7 +117,7 @@ def test_by_mes_contains_both_currencies(db, user):
     ))
     db.commit()
 
-    s = operations_summary(db, user.id, year=2026)
+    s = operations_summary(db, user.id, from_date=date(2026, 1, 1), to_date=date(2026, 12, 31))
     mes1 = next(m for m in s["by_mes"] if m["mes"] == 1)
 
     assert mes1["compras_ars"] == 30_000.00

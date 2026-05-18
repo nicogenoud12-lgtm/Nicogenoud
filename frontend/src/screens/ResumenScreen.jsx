@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { useState, useMemo } from "react";
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import { getKpis, getHoldings } from "../api/portfolio";
 import { listSnapshots } from "../api/snapshots";
@@ -10,14 +10,17 @@ import PortfolioLineChart from "../components/charts/PortfolioLineChart.jsx";
 import AssetDonutChart from "../components/charts/AssetDonutChart.jsx";
 import { formatARS, formatUSD } from "../utils/format";
 import { useUiStore } from "../store/uiStore";
+import { periodToDays } from "../utils/periods";
 
 export default function ResumenScreen() {
   const currency = useUiStore((s) => s.currency);
   const fmt = currency === "USD" ? formatUSD : formatARS;
   const [selectedClass, setSelectedClass] = useState(null);
+  const [snapPeriod, setSnapPeriod] = useState("3M");
+  const snapDays = periodToDays(snapPeriod);
 
   const kpis = useQuery({ queryKey: ["kpis"], queryFn: getKpis });
-  const snaps = useQuery({ queryKey: ["snapshots", 90], queryFn: () => listSnapshots(90) });
+  const snaps = useQuery({ queryKey: ["snapshots", snapDays], queryFn: () => listSnapshots(snapDays) });
   const holdings = useQuery({ queryKey: ["holdings"], queryFn: () => getHoldings(false) });
 
   if (kpis.isLoading || snaps.isLoading) return <LoadingSpinner />;
@@ -76,7 +79,12 @@ export default function ResumenScreen() {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <div className="lg:col-span-2">
-          <PortfolioLineChart data={snaps.data || []} selectedClass={selectedClass} />
+          <PortfolioLineChart
+            data={snaps.data || []}
+            selectedClass={selectedClass}
+            period={snapPeriod}
+            onPeriodChange={setSnapPeriod}
+          />
         </div>
         <AssetDonutChart
           data={k.distribucion_por_clase || []}

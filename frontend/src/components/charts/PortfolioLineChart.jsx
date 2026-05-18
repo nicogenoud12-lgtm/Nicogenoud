@@ -11,8 +11,9 @@ import { useMemo } from "react";
 import { useUiStore } from "../../store/uiStore";
 import { formatARS, formatDateShort, formatUSD } from "../../utils/format";
 import { useChartTokens } from "./chartTheme";
+import PeriodFilter from "./PeriodFilter";
 
-export default function PortfolioLineChart({ data, selectedClass }) {
+export default function PortfolioLineChart({ data, selectedClass, period, onPeriodChange }) {
   const currency = useUiStore((s) => s.currency);
   const t = useChartTokens();
   const dataKey = currency === "USD" ? "total_usd" : "total_ars";
@@ -55,7 +56,7 @@ export default function PortfolioLineChart({ data, selectedClass }) {
 
   return (
     <div className="card p-4 h-80">
-      <div className="flex items-baseline justify-between mb-2">
+      <div className="flex items-center justify-between mb-2">
         <div>
           <div className="label">
             Evolución de cartera
@@ -67,6 +68,7 @@ export default function PortfolioLineChart({ data, selectedClass }) {
           </div>
           <div className="text-xs text-textMuted">{currency}</div>
         </div>
+        {onPeriodChange && <PeriodFilter value={period} onChange={onPeriodChange} />}
       </div>
       <ResponsiveContainer width="100%" height="85%">
         <LineChart data={series} margin={{ top: 8, right: 12, left: 4, bottom: 0 }}>

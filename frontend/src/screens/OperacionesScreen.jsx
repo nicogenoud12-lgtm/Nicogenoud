@@ -22,7 +22,7 @@ export default function OperacionesScreen() {
   });
   const sum = useQuery({
     queryKey: ["opsSummary", year],
-    queryFn: () => operationsSummary(year),
+    queryFn: () => operationsSummary({ fromDate: `${year}-01-01`, toDate: `${year}-12-31` }),
   });
   const sync = useMutation({
     mutationFn: () => syncOperations(year),

@@ -1,5 +1,5 @@
+import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
 import { getHoldings, getKpis } from "../api/portfolio";
 import { operationsSummary } from "../api/operations";
 import { listSnapshots } from "../api/snapshots";
@@ -10,6 +10,7 @@ import OperationsBarChart from "../components/charts/OperationsBarChart.jsx";
 import PortfolioLineChart from "../components/charts/PortfolioLineChart.jsx";
 import { formatARS, formatPct, formatUSD } from "../utils/format";
 import { useUiStore } from "../store/uiStore";
+import { periodToDays, periodToDates } from "../utils/periods";
 
 function SectionTitle({ children }) {
   return (
@@ -23,12 +24,16 @@ export default function AnalisisScreen() {
   const currency = useUiStore((s) => s.currency);
   const fmt = currency === "USD" ? formatUSD : formatARS;
   const [selectedClass, setSelectedClass] = useState(null);
+  const [snapPeriod, setSnapPeriod] = useState("MAX");
+  const [opsPeriod, setOpsPeriod] = useState("YTD");
+  const snapDays = periodToDays(snapPeriod);
+  const { fromDate: opsFrom, toDate: opsTo } = periodToDates(opsPeriod);
 
-  const kpis     = useQuery({ queryKey: ["kpis"],           queryFn: getKpis });
-  const holdings = useQuery({ queryKey: ["holdings"],        queryFn: () => getHoldings(false) });
-  const snaps    = useQuery({ queryKey: ["snapshots", 3650], queryFn: () => listSnapshots(3650) });
-  const sum      = useQuery({ queryKey: ["opsSummary", 2026], queryFn: () => operationsSummary(2026) });
-  const cryptoR  = useQuery({ queryKey: ["crypto-report"],   queryFn: getCryptoReport, staleTime: 60_000 });
+  const kpis     = useQuery({ queryKey: ["kpis"], queryFn: getKpis });
+  const holdings = useQuery({ queryKey: ["holdings"], queryFn: () => getHoldings(false) });
+  const snaps    = useQuery({ queryKey: ["snapshots", snapDays], queryFn: () => listSnapshots(snapDays) });
+  const sum      = useQuery({ queryKey: ["opsSummary", opsFrom, opsTo], queryFn: () => operationsSummary({ fromDate: opsFrom, toDate: opsTo }) });
+  const cryptoR  = useQuery({ queryKey: ["crypto-report"], queryFn: getCryptoReport, staleTime: 60_000 });
   const cryptoSn = useQuery({ queryKey: ["crypto-snapshots", 365], queryFn: () => listCryptoSnapshots(365) });
 
   // --- IOL performers ---
@@ -131,11 +136,18 @@ export default function AnalisisScreen() {
       <OperationsBarChart
         data={opsByBucket}
         title="Resultado neto por símbolo (Ventas − Compras)"
+        period={opsPeriod}
+        onPeriodChange={setOpsPeriod}
       />
 
       {/* ── EVOLUCIÓN ────────────────────────────────────────────── */}
       <SectionTitle>Evolución IOL</SectionTitle>
-      <PortfolioLineChart data={snaps.data || []} selectedClass={selectedClass} />
+      <PortfolioLineChart
+        data={snaps.data || []}
+        selectedClass={selectedClass}
+        period={snapPeriod}
+        onPeriodChange={setSnapPeriod}
+      />
 
       <SectionTitle>Evolución Crypto</SectionTitle>
       <PortfolioLineChart data={cryptoSn.data || []} />

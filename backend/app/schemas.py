@@ -106,7 +106,9 @@ class OperationOut(BaseModel):
 
 
 class OperationsSummary(BaseModel):
-    year: int
+    year: Optional[int] = None
+    from_date: Optional[date] = None
+    to_date: Optional[date] = None
     count: int
     total_compras_ars: float
     total_ventas_ars: float
