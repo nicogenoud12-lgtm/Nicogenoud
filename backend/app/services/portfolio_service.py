@@ -49,6 +49,7 @@ def _extract_row(activo: dict, mercado: str) -> dict | None:
     simbolo = titulo.get("simbolo") or titulo.get("Simbolo") or activo.get("simbolo")
     if not simbolo:
         return None
+    log.debug("IOL activo keys=%s titulo keys=%s", list(activo.keys()), list(titulo.keys()))
     descripcion = titulo.get("descripcion") or activo.get("descripcion")
     tipo_raw = titulo.get("tipo") or activo.get("tipo")
     moneda = (
@@ -81,6 +82,7 @@ def _extract_row(activo: dict, mercado: str) -> dict | None:
             titulo.get("variacionPorcentaje"),
         ),
         "moneda": moneda,
+        "mercado_iol": titulo.get("mercado") or activo.get("mercado"),
     }
 
 
@@ -95,58 +97,82 @@ async def refresh_holdings(db: Session, user_id: int) -> list[Holding]:
                 log.warning("portafolio fetch failed pais=%s: %s", pais, e)
                 pais_data[pais] = {}
 
-    # MEP rate for ARS→USD valuation
-    today = date.today()
-    try:
-        mep = await dolar_service.get_or_fetch(db, d=today, source="MEP")
-        mep_rate = _f(mep.promedio)
-    except Exception:
-        mep_rate = 0.0
+        # MEP rate for ARS→USD valuation
+        today = date.today()
+        try:
+            mep = await dolar_service.get_or_fetch(db, d=today, source="MEP")
+            mep_rate = _f(mep.promedio)
+        except Exception:
+            mep_rate = 0.0
 
-    keep_keys: set[tuple[str, str]] = set()
-    rows: list[Holding] = []
-    for mercado, pf in pais_data.items():
-        for activo in _iter_titulos(pf):
-            row_data = _extract_row(activo, mercado)
-            if row_data is None:
-                continue
-            simbolo = row_data["simbolo"]
-            keep_keys.add((mercado, simbolo))
-            moneda = (row_data.get("moneda") or "").lower()
-            valuacion = row_data["valuacion"]
-            if "dolar" in moneda or "usd" in moneda:
-                valuacion_usd = valuacion
-                valuacion_ars = valuacion * mep_rate if mep_rate else 0.0
-            else:
-                valuacion_ars = valuacion
-                valuacion_usd = (valuacion / mep_rate) if mep_rate else 0.0
+        keep_keys: set[tuple[str, str]] = set()
+        rows: list[Holding] = []
+        # simbolo → mercado_iol for cotizacion fallback
+        needs_variacion: list = []
 
-            holding = (
-                db.query(Holding)
-                .filter(
-                    Holding.user_id == user_id,
-                    Holding.mercado == mercado,
-                    Holding.simbolo == simbolo,
+        for mercado, pf in pais_data.items():
+            for activo in _iter_titulos(pf):
+                row_data = _extract_row(activo, mercado)
+                if row_data is None:
+                    continue
+                simbolo = row_data["simbolo"]
+                keep_keys.add((mercado, simbolo))
+                moneda = (row_data.get("moneda") or "").lower()
+                valuacion = row_data["valuacion"]
+                if "dolar" in moneda or "usd" in moneda:
+                    valuacion_usd = valuacion
+                    valuacion_ars = valuacion * mep_rate if mep_rate else 0.0
+                else:
+                    valuacion_ars = valuacion
+                    valuacion_usd = (valuacion / mep_rate) if mep_rate else 0.0
+
+                holding = (
+                    db.query(Holding)
+                    .filter(
+                        Holding.user_id == user_id,
+                        Holding.mercado == mercado,
+                        Holding.simbolo == simbolo,
+                    )
+                    .first()
                 )
-                .first()
-            )
-            if holding is None:
-                holding = Holding(user_id=user_id, mercado=mercado, simbolo=simbolo)
-                db.add(holding)
+                if holding is None:
+                    holding = Holding(user_id=user_id, mercado=mercado, simbolo=simbolo)
+                    db.add(holding)
 
-            holding.descripcion = row_data["descripcion"]
-            holding.tipo = row_data["tipo"]
-            holding.clase = row_data["clase"]
-            holding.cantidad = row_data["cantidad"]
-            holding.ppc = row_data["ppc"]
-            holding.ultimo_precio = row_data["ultimo_precio"]
-            holding.valuacion_ars = valuacion_ars
-            holding.valuacion_usd = valuacion_usd
-            holding.ganancia_porcentaje = row_data["ganancia_porcentaje"]
-            holding.ganancia_dinero = row_data["ganancia_dinero"]
-            holding.variacion_dia = row_data.get("variacion_dia")
-            holding.moneda = row_data["moneda"]
-            rows.append(holding)
+                holding.descripcion = row_data["descripcion"]
+                holding.tipo = row_data["tipo"]
+                holding.clase = row_data["clase"]
+                holding.cantidad = row_data["cantidad"]
+                holding.ppc = row_data["ppc"]
+                holding.ultimo_precio = row_data["ultimo_precio"]
+                holding.valuacion_ars = valuacion_ars
+                holding.valuacion_usd = valuacion_usd
+                holding.ganancia_porcentaje = row_data["ganancia_porcentaje"]
+                holding.ganancia_dinero = row_data["ganancia_dinero"]
+                holding.variacion_dia = row_data.get("variacion_dia")
+                holding.moneda = row_data["moneda"]
+                rows.append(holding)
+
+                if holding.variacion_dia is None:
+                    mercado_iol = row_data.get("mercado_iol")
+                    if mercado_iol:
+                        needs_variacion.append((simbolo, mercado_iol, holding))
+
+        # Fallback: fetch individual cotizacion for holdings without daily variation
+        if needs_variacion:
+            log.info("variacion_dia missing for %d holdings — fetching cotizaciones", len(needs_variacion))
+            for simbolo, mercado_iol, holding in needs_variacion:
+                try:
+                    cot = await client.get_cotizacion(mercado_iol, simbolo)
+                    var = _first_not_none(
+                        cot.get("variacion"),
+                        cot.get("variacionPorcentaje"),
+                    )
+                    if var is not None:
+                        holding.variacion_dia = var
+                        log.debug("cotizacion fallback %s variacion=%.4f", simbolo, var)
+                except Exception as e:
+                    log.debug("cotizacion fallback failed %s: %s", simbolo, e)
 
     # Drop holdings no longer in IOL portfolio
     existing = db.query(Holding).filter(Holding.user_id == user_id).all()
