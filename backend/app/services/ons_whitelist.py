@@ -14,9 +14,12 @@ matched here falls back to other heuristics in classifier.py.
 ON_BASE_TICKERS: set[str] = {
     # Mastellone Hnos
     "MRCA", "MR35", "MR36", "MR37", "MR38",
-    # YPF
+    # YPF — lettered series (YMCJ, YMCI, etc.)
     "YMCJ", "YMCI", "YMCH", "YMCK", "YMCM", "YMCN", "YMCO", "YMCP", "YMCQ",
     "YCAB", "YCAD", "YCA6",
+    # YPF — numbered series (YM30–YM42): suffix D=MEP, C=CCL, O/none=ARS
+    "YM30", "YM31", "YM32", "YM33", "YM34", "YM35", "YM36",
+    "YM37", "YM38", "YM39", "YM40", "YM41", "YM42",
     # Pampa Energía
     "MGC1", "MGC9", "MGC3", "MGCC", "MGCJ", "MGCK", "MGCL", "MGCM", "MGCN",
     "MGCH", "MGCO", "MGCP",

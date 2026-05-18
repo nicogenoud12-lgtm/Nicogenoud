@@ -121,12 +121,16 @@ def test_classify_event_dividendo_bpoc7_us_dollar():
 
 
 def test_classify_event_compra_on_suffix_o_is_ars():
-    # YM34O is an Argentine ON (YPF), suffix O is part of the ticker, not USD_CABLE marker
-    ev, cur = classify_event(
-        tipo="Compra",
-        simbolo="YM34O",
-        moneda="Pesos",
-        asset_class="ON",
-    )
+    # YM34O is a YPF Argentine ON in ARS — O is part of the ticker, not a USD_CABLE marker
+    asset = classify_asset(simbolo="YM34O", tipo=None, descripcion=None)
+    assert asset == "ON"
+    ev, cur = classify_event(tipo="Compra", simbolo="YM34O", moneda="Pesos", asset_class=asset)
     assert ev == "COMPRA"
     assert cur == "ARS"
+
+
+def test_classify_event_compra_ym39d_is_usd_mep():
+    # YM39D has suffix D → USD_MEP regardless of asset class
+    ev, cur = classify_event(tipo="Compra", simbolo="YM39D", moneda=None, asset_class="ON")
+    assert ev == "COMPRA"
+    assert cur == "USD_MEP"
