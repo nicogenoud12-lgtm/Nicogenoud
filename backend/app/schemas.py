@@ -117,6 +117,8 @@ class OperationsSummary(BaseModel):
     total_dividendos_usd: float
     total_renta_ars: float
     total_renta_usd: float
+    fx_source: str = "MEP"
+    fx_missing_count: int = 0
     by_simbolo: list[dict[str, Any]]
     by_mes: list[dict[str, Any]]
 

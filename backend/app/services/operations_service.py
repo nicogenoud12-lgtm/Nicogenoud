@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from ..models import Operation
 from .classifier import classify_asset, classify_event
+from .dolar_service import backfill_historical_mep
 from .iol_client import IolClient
 
 _ENRICHABLE_KINDS = ("DIVIDENDO", "RENTA", "AMORTIZACION")
@@ -141,6 +142,11 @@ async def sync_operations(
     # Enrich dividends/renta with net amounts from /movimientos
     enriched = await _enrich_with_movimientos(db, user_id, desde, hasta)
     log.info("sync_operations: enriched %d dividend/renta rows from movimientos", enriched)
+
+    # Backfill historical MEP rates so pnl.py can convert amounts to a single currency
+    inserted_mep = await backfill_historical_mep(db, desde=desde, hasta=date.today())
+    if inserted_mep:
+        log.info("sync_operations: backfilled %d MEP historical rows", inserted_mep)
 
     return touched
 

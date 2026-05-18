@@ -9,6 +9,7 @@ from ..deps import get_current_user
 from ..models import DolarQuote, User
 from ..schemas import DolarQuoteOut
 from ..services import dolar_service
+from ..services.dolar_service import backfill_historical_mep
 
 router = APIRouter(prefix="/dolar", tags=["dolar"])
 
@@ -22,6 +23,18 @@ async def current(
     src = source or (get_setting(db, "dolar_source", "MEP") or "MEP")
     row = await dolar_service.get_or_fetch(db, d=date.today(), source=src)
     return row
+
+
+@router.post("/backfill")
+async def backfill(
+    desde: date,
+    hasta: date,
+    db: Session = Depends(get_db),
+    _user: User = Depends(get_current_user),
+):
+    """Backfill historical MEP rates from ArgentinaDatos for the given date range."""
+    inserted = await backfill_historical_mep(db, desde=desde, hasta=hasta)
+    return {"inserted": inserted, "desde": str(desde), "hasta": str(hasta)}
 
 
 @router.get("/history", response_model=list[DolarQuoteOut])

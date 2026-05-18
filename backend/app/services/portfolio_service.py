@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from ..models import Holding, Operation, PortfolioSnapshot
 from . import dolar_service
 from .classifier import classify_asset
+from .dolar_service import build_mep_lookup, fx_for_date
 from .iol_client import IolClient
 
 log = logging.getLogger(__name__)
@@ -167,41 +168,51 @@ def compute_kpis(db: Session, user_id: int, *, dolar_rate: float, dolar_source: 
 
     pnl_no_realizada_ars = sum(_f(h.ganancia_dinero) for h in holdings)
 
-    # P&L realizada / dividendos / renta del 2026 desde Operations
-    ops = db.query(Operation).filter(Operation.user_id == user_id).all()
+    # P&L realizada / dividendos / renta del 2026 desde Operations — convertido a ambas monedas
+    year = 2026
+    from datetime import timedelta
+    ops = db.query(Operation).filter(
+        Operation.user_id == user_id,
+        Operation.fecha_operada >= date(year, 1, 1),
+        Operation.fecha_operada <= date(year, 12, 31),
+    ).all()
+    mep = build_mep_lookup(db, date(year, 1, 1), date(year, 12, 31))
+    sorted_mep_dates = sorted(mep.keys())
+
     pnl_realizada_2026_ars = 0.0
     pnl_realizada_2026_usd = 0.0
     div_ars = 0.0
     div_usd = 0.0
     renta_ars = 0.0
     renta_usd = 0.0
-    n_ops_2026 = 0
+    n_ops_2026 = len(ops)
+
     for o in ops:
-        if not o.fecha_operada or o.fecha_operada.year != 2026:
-            continue
-        n_ops_2026 += 1
-        amount = _f(o.monto_neto) if o.monto_neto is not None else _f(o.monto_operado)
-        usd = o.currency_kind in ("USD_MEP", "USD_CABLE")
+        amount = abs(_f(o.monto_neto) if o.monto_neto is not None else _f(o.monto_operado))
+        is_usd = o.currency_kind in ("USD_MEP", "USD_CABLE")
+        rate = fx_for_date(mep, sorted_mep_dates, o.fecha_operada) if o.fecha_operada else None
+
+        if rate and rate > 0:
+            if is_usd:
+                usd_amt, ars_amt = amount, amount * rate
+            else:
+                ars_amt, usd_amt = amount, amount / rate
+        else:
+            ars_amt = 0.0 if is_usd else amount
+            usd_amt = amount if is_usd else 0.0
+
         if o.event_kind == "VENTA":
-            if usd:
-                pnl_realizada_2026_usd += amount
-            else:
-                pnl_realizada_2026_ars += amount
+            pnl_realizada_2026_ars += ars_amt
+            pnl_realizada_2026_usd += usd_amt
         elif o.event_kind == "COMPRA":
-            if usd:
-                pnl_realizada_2026_usd -= amount
-            else:
-                pnl_realizada_2026_ars -= amount
+            pnl_realizada_2026_ars -= ars_amt
+            pnl_realizada_2026_usd -= usd_amt
         elif o.event_kind == "DIVIDENDO":
-            if usd:
-                div_usd += amount
-            else:
-                div_ars += amount
+            div_ars += ars_amt
+            div_usd += usd_amt
         elif o.event_kind in ("RENTA", "AMORTIZACION"):
-            if usd:
-                renta_usd += amount
-            else:
-                renta_ars += amount
+            renta_ars += ars_amt
+            renta_usd += usd_amt
 
     return {
         "total_ars": round(total_ars, 2),

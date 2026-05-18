@@ -45,6 +45,7 @@ export default function OperacionesScreen() {
 
   const fmt = currency === "USD" ? formatUSD : formatARS;
   const s = sum.data || {};
+  const fxSub = "convertido a MEP del día";
 
   const columns = [
     {
@@ -125,22 +126,31 @@ export default function OperacionesScreen() {
         </button>
       </div>
 
+      {s.fx_missing_count > 0 && (
+        <div className="text-xs text-amber-400 bg-amber-400/10 border border-amber-400/20 rounded px-3 py-1.5">
+          ⚠ {s.fx_missing_count} operación{s.fx_missing_count !== 1 ? "es" : ""} sin tasa MEP histórica — sincronizá para completar
+        </div>
+      )}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <KpiCard
           label="Compras"
           value={fmt(currency === "USD" ? s.total_compras_usd : s.total_compras_ars)}
+          sub={fxSub}
         />
         <KpiCard
           label="Ventas"
           value={fmt(currency === "USD" ? s.total_ventas_usd : s.total_ventas_ars)}
+          sub={fxSub}
         />
         <KpiCard
-          label="Renta ONs"
+          label="Renta"
           value={fmt(currency === "USD" ? s.total_renta_usd : s.total_renta_ars)}
+          sub={fxSub}
         />
         <KpiCard
           label="Dividendos"
           value={fmt(currency === "USD" ? s.total_dividendos_usd : s.total_dividendos_ars)}
+          sub={fxSub}
         />
       </div>
 

@@ -74,8 +74,8 @@ export default function ResumenScreen() {
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <KpiCard label="Renta ONs 2026" value={fmt(renta)} />
-        <KpiCard label="Dividendos 2026" value={fmt(divs)} />
+        <KpiCard label="Renta 2026" value={fmt(renta)} sub="convertido a MEP del día" />
+        <KpiCard label="Dividendos 2026" value={fmt(divs)} sub="convertido a MEP del día" />
         <KpiCard label="Valor (ARS)" value={formatARS(k.total_ars)} />
         <KpiCard label="Valor (USD)" value={formatUSD(k.total_usd)} />
       </div>
