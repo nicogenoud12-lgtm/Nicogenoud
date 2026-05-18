@@ -38,8 +38,7 @@ export default function ResumenScreen() {
 
   const k = kpis.data;
   const totalValue = currency === "USD" ? k.total_usd : k.total_ars;
-  const pnlReal = currency === "USD" ? k.pnl_realizada_2026_usd : k.pnl_realizada_2026_ars;
-  const pnlNoReal = k.pnl_no_realizada_ars;
+  const pnlNoReal = currency === "USD" ? k.pnl_no_realizada_usd : k.pnl_no_realizada_ars;
   const renta = currency === "USD" ? k.renta_2026_usd : k.renta_2026_ars;
   const divs = currency === "USD" ? k.dividendos_2026_usd : k.dividendos_2026_ars;
 
@@ -60,15 +59,10 @@ export default function ResumenScreen() {
           sub={`MEP ${k.dolar_source}: ${Number(k.dolar_rate).toFixed(2)}`}
         />
         <KpiCard
-          label="P&L realizada 2026"
-          value={fmt(pnlReal)}
-          tone={pnlReal >= 0 ? "positive" : "negative"}
-        />
-        <KpiCard
           label="P&L no realizada"
-          value={formatARS(pnlNoReal)}
+          value={fmt(pnlNoReal)}
           tone={pnlNoReal >= 0 ? "positive" : "negative"}
-          sub="(de IOL, en ARS)"
+          sub="de IOL (valuación actual − costo)"
         />
         <KpiCard label="N° operaciones 2026" value={k.n_operaciones_2026} />
       </div>

@@ -71,8 +71,7 @@ class KpisResponse(BaseModel):
     dolar_rate: float
     dolar_source: str
     pnl_no_realizada_ars: float
-    pnl_realizada_2026_ars: float
-    pnl_realizada_2026_usd: float
+    pnl_no_realizada_usd: float
     dividendos_2026_ars: float
     dividendos_2026_usd: float
     renta_2026_ars: float

@@ -167,10 +167,10 @@ def compute_kpis(db: Session, user_id: int, *, dolar_rate: float, dolar_source: 
         )
 
     pnl_no_realizada_ars = sum(_f(h.ganancia_dinero) for h in holdings)
+    pnl_no_realizada_usd = (pnl_no_realizada_ars / dolar_rate) if dolar_rate else 0.0
 
-    # P&L realizada / dividendos / renta del 2026 desde Operations — convertido a ambas monedas
+    # Dividendos / renta del 2026 desde Operations — convertido a ambas monedas via MEP histórico
     year = 2026
-    from datetime import timedelta
     ops = db.query(Operation).filter(
         Operation.user_id == user_id,
         Operation.fecha_operada >= date(year, 1, 1),
@@ -179,8 +179,6 @@ def compute_kpis(db: Session, user_id: int, *, dolar_rate: float, dolar_source: 
     mep = build_mep_lookup(db, date(year, 1, 1), date(year, 12, 31))
     sorted_mep_dates = sorted(mep.keys())
 
-    pnl_realizada_2026_ars = 0.0
-    pnl_realizada_2026_usd = 0.0
     div_ars = 0.0
     div_usd = 0.0
     renta_ars = 0.0
@@ -193,21 +191,12 @@ def compute_kpis(db: Session, user_id: int, *, dolar_rate: float, dolar_source: 
         rate = fx_for_date(mep, sorted_mep_dates, o.fecha_operada) if o.fecha_operada else None
 
         if rate and rate > 0:
-            if is_usd:
-                usd_amt, ars_amt = amount, amount * rate
-            else:
-                ars_amt, usd_amt = amount, amount / rate
+            usd_amt, ars_amt = (amount, amount * rate) if is_usd else (amount / rate, amount)
         else:
             ars_amt = 0.0 if is_usd else amount
             usd_amt = amount if is_usd else 0.0
 
-        if o.event_kind == "VENTA":
-            pnl_realizada_2026_ars += ars_amt
-            pnl_realizada_2026_usd += usd_amt
-        elif o.event_kind == "COMPRA":
-            pnl_realizada_2026_ars -= ars_amt
-            pnl_realizada_2026_usd -= usd_amt
-        elif o.event_kind == "DIVIDENDO":
+        if o.event_kind == "DIVIDENDO":
             div_ars += ars_amt
             div_usd += usd_amt
         elif o.event_kind in ("RENTA", "AMORTIZACION"):
@@ -220,8 +209,7 @@ def compute_kpis(db: Session, user_id: int, *, dolar_rate: float, dolar_source: 
         "dolar_rate": round(dolar_rate, 4),
         "dolar_source": dolar_source,
         "pnl_no_realizada_ars": round(pnl_no_realizada_ars, 2),
-        "pnl_realizada_2026_ars": round(pnl_realizada_2026_ars, 2),
-        "pnl_realizada_2026_usd": round(pnl_realizada_2026_usd, 2),
+        "pnl_no_realizada_usd": round(pnl_no_realizada_usd, 2),
         "dividendos_2026_ars": round(div_ars, 2),
         "dividendos_2026_usd": round(div_usd, 2),
         "renta_2026_ars": round(renta_ars, 2),
