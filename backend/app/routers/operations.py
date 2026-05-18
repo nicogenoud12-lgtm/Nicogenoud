@@ -54,8 +54,14 @@ async def sync(
 
 @router.get("/summary", response_model=OperationsSummary)
 def summary(
+    from_date: date | None = Query(default=None),
+    to_date: date | None = Query(default=None),
     year: int = Query(default=2026),
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    return pnl.operations_summary(db, user.id, year=year)
+    if from_date is None:
+        from_date = date(year, 1, 1)
+    if to_date is None:
+        to_date = date(year, 12, 31)
+    return pnl.operations_summary(db, user.id, from_date=from_date, to_date=to_date)

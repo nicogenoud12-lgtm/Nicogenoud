@@ -6,5 +6,5 @@ export const listOperations = (params = {}) =>
 export const syncOperations = (year = 2026) =>
   api.post("/operations/sync", null, { params: { year } }).then((r) => r.data);
 
-export const operationsSummary = (year = 2026) =>
-  api.get("/operations/summary", { params: { year } }).then((r) => r.data);
+export const operationsSummary = ({ fromDate, toDate } = {}) =>
+  api.get("/operations/summary", { params: { from_date: fromDate, to_date: toDate } }).then((r) => r.data);
