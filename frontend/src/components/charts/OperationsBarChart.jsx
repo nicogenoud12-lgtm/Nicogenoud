@@ -11,11 +11,9 @@ import {
 import { useUiStore } from "../../store/uiStore";
 import { formatARS, formatUSD } from "../../utils/format";
 import { useChartTokens } from "./chartTheme";
+import PeriodFilter from "./PeriodFilter";
 
-/**
- * data: [{ simbolo, pnl_ars, pnl_usd }]
- */
-export default function OperationsBarChart({ data, title = "Resultado por símbolo" }) {
+export default function OperationsBarChart({ data, title = "Resultado por símbolo", period, onPeriodChange }) {
   const currency = useUiStore((s) => s.currency);
   const t = useChartTokens();
   const fmt = currency === "USD" ? formatUSD : formatARS;
@@ -29,7 +27,10 @@ export default function OperationsBarChart({ data, title = "Resultado por símbo
 
   return (
     <div className="card p-4 h-80">
-      <div className="label mb-2">{title}</div>
+      <div className="flex items-center justify-between mb-2">
+        <div className="label">{title}</div>
+        {onPeriodChange && <PeriodFilter value={period} onChange={onPeriodChange} />}
+      </div>
       <ResponsiveContainer width="100%" height="85%">
         <BarChart
           data={series}

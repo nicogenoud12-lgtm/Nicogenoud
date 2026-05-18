@@ -13,15 +13,13 @@ def _f(v) -> float:
     return float(v) if v is not None else 0.0
 
 
-def operations_summary(db: Session, user_id: int, *, year: int) -> dict:
-    desde = date(year, 1, 1)
-    hasta = date(year, 12, 31)
+def operations_summary(db: Session, user_id: int, *, from_date: date, to_date: date) -> dict:
     ops = (
         db.query(Operation)
         .filter(
             Operation.user_id == user_id,
-            Operation.fecha_operada >= desde,
-            Operation.fecha_operada <= hasta,
+            Operation.fecha_operada >= from_date,
+            Operation.fecha_operada <= to_date,
         )
         .all()
     )
@@ -92,7 +90,9 @@ def operations_summary(db: Session, user_id: int, *, year: int) -> dict:
     ]
 
     return {
-        "year": year,
+        "year": from_date.year,
+        "from_date": from_date,
+        "to_date": to_date,
         "count": len(ops),
         **{k: round(v, 2) for k, v in totals.items()},
         "by_simbolo": by_simbolo_list,
