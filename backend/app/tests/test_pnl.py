@@ -91,7 +91,7 @@ def test_fallback_to_nearest_date(db, user):
     assert s["fx_missing_count"] == 0
 
 
-def test_amortizacion_counts_in_renta_bucket(db, user):
+def test_amortizacion_has_own_bucket(db, user):
     db.add(DolarQuote(date=date(2026, 2, 1), source="MEP", compra=1490, venta=1510, promedio=1500))
     db.add(Operation(
         user_id=user.id, iol_numero="5",
@@ -103,8 +103,10 @@ def test_amortizacion_counts_in_renta_bucket(db, user):
 
     s = operations_summary(db, user.id, from_date=date(2026, 1, 1), to_date=date(2026, 12, 31))
 
-    assert s["total_renta_usd"] == 300.00
-    assert s["total_renta_ars"] == 300 * 1500
+    assert s["total_amortizaciones_usd"] == 300.00
+    assert s["total_amortizaciones_ars"] == 300 * 1500
+    assert s["total_renta_usd"] == 0.0
+    assert s["total_renta_ars"] == 0.0
 
 
 def test_by_mes_contains_both_currencies(db, user):
