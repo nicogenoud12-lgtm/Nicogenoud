@@ -117,6 +117,7 @@ export default function ResumenScreen() {
   const k = kpis.data;
   const pnlNoReal = currency === "USD" ? k.pnl_no_realizada_usd : k.pnl_no_realizada_ars;
   const renta = currency === "USD" ? k.renta_2026_usd : k.renta_2026_ars;
+  const amort = currency === "USD" ? k.amortizaciones_2026_usd : k.amortizaciones_2026_ars;
   const divs = currency === "USD" ? k.dividendos_2026_usd : k.dividendos_2026_ars;
 
   const allHoldings = holdings.data || [];
@@ -134,7 +135,7 @@ export default function ResumenScreen() {
   return (
     <div className="space-y-6">
       {/* KPIs */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
         <KpiCard
           label="Valor total"
           value={fmt(currency === "USD" ? k.total_usd : k.total_ars)}
@@ -147,6 +148,7 @@ export default function ResumenScreen() {
           sub="valuación actual − costo"
         />
         <KpiCard label="Renta 2026" value={fmt(renta)} sub="MEP del día" />
+        <KpiCard label="Amortizaciones 2026" value={fmt(amort)} sub="MEP del día" />
         <KpiCard label="Dividendos 2026" value={fmt(divs)} sub="MEP del día" />
       </div>
 
