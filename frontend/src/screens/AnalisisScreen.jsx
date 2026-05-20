@@ -91,7 +91,7 @@ export default function AnalisisScreen() {
       <h1 className="text-xl font-semibold">Análisis</h1>
 
       {/* ── TOTALES COMBINADOS ────────────────────────────────────── */}
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <div className="card p-4">
           <div className="label mb-1">IOL</div>
           <div className="text-xl font-semibold tabular-nums">
