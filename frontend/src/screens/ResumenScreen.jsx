@@ -211,9 +211,11 @@ export default function ResumenScreen() {
                 </div>
                 <div className="text-right tabular-nums">
                   <div>{fmt(currency === "USD" ? h.valuacion_usd : h.valuacion_ars)}</div>
-                  <div className={`text-xs ${Number(h.ganancia_porcentaje || 0) >= 0 ? "text-success" : "text-danger"}`}>
-                    {Number(h.ganancia_porcentaje || 0).toFixed(2)}%
-                  </div>
+                  {h.variacion_dia != null && (
+                    <div className={`text-xs ${Number(h.variacion_dia) >= 0 ? "text-success" : "text-danger"}`}>
+                      {Number(h.variacion_dia).toFixed(2)}% hoy
+                    </div>
+                  )}
                 </div>
               </li>
             ))}
