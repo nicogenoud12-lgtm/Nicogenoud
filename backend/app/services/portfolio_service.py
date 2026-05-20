@@ -226,6 +226,8 @@ def compute_kpis(db: Session, user_id: int, *, dolar_rate: float, dolar_source: 
     div_usd = 0.0
     renta_ars = 0.0
     renta_usd = 0.0
+    amort_ars = 0.0
+    amort_usd = 0.0
     n_ops_2026 = len(ops)
 
     for o in ops:
@@ -242,9 +244,12 @@ def compute_kpis(db: Session, user_id: int, *, dolar_rate: float, dolar_source: 
         if o.event_kind == "DIVIDENDO":
             div_ars += ars_amt
             div_usd += usd_amt
-        elif o.event_kind in ("RENTA", "AMORTIZACION"):
+        elif o.event_kind == "RENTA":
             renta_ars += ars_amt
             renta_usd += usd_amt
+        elif o.event_kind == "AMORTIZACION":
+            amort_ars += ars_amt
+            amort_usd += usd_amt
 
     return {
         "total_ars": round(total_ars, 2),
@@ -257,6 +262,8 @@ def compute_kpis(db: Session, user_id: int, *, dolar_rate: float, dolar_source: 
         "dividendos_2026_usd": round(div_usd, 2),
         "renta_2026_ars": round(renta_ars, 2),
         "renta_2026_usd": round(renta_usd, 2),
+        "amortizaciones_2026_ars": round(amort_ars, 2),
+        "amortizaciones_2026_usd": round(amort_usd, 2),
         "n_operaciones_2026": n_ops_2026,
         "distribucion_por_clase": distribucion,
     }

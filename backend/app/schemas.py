@@ -77,6 +77,8 @@ class KpisResponse(BaseModel):
     dividendos_2026_usd: float
     renta_2026_ars: float
     renta_2026_usd: float
+    amortizaciones_2026_ars: float = 0.0
+    amortizaciones_2026_usd: float = 0.0
     n_operaciones_2026: int
     distribucion_por_clase: list[KpiBreakdownItem]
 
