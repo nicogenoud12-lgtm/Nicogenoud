@@ -8,6 +8,7 @@ from ..deps import get_current_user
 from ..models import Operation, User
 from ..schemas import OperationOut, OperationsSummary
 from ..services import operations_service, pnl
+from ..services.dolar_service import build_mep_lookup, fx_for_date
 from ..services.iol_auth import IolAuthError, IolNotConnectedError
 
 router = APIRouter(prefix="/operations", tags=["operations"])
@@ -34,7 +35,33 @@ def list_operations(
             q = q.filter(Operation.event_kind.in_(kinds))
     if simbolo:
         q = q.filter(Operation.simbolo.ilike(f"%{simbolo}%"))
-    return q.order_by(Operation.fecha_operada.desc(), Operation.id.desc()).all()
+    ops = q.order_by(Operation.fecha_operada.desc(), Operation.id.desc()).all()
+
+    mep = build_mep_lookup(db, desde, hasta)
+    sorted_dates = sorted(mep.keys())
+
+    result = []
+    for o in ops:
+        rate = fx_for_date(mep, sorted_dates, o.fecha_operada) if o.fecha_operada else None
+        amount = float(o.monto_neto) if o.monto_neto is not None else (float(o.monto_operado) if o.monto_operado is not None else None)
+        is_usd = o.currency_kind in ("USD_MEP", "USD_CABLE")
+
+        if amount is not None and rate and rate > 0:
+            monto_ars = round(amount * rate, 2) if is_usd else round(amount, 2)
+            monto_usd = round(amount, 2) if is_usd else round(amount / rate, 2)
+        elif amount is not None:
+            monto_ars = round(amount, 2) if not is_usd else None
+            monto_usd = round(amount, 2) if is_usd else None
+        else:
+            monto_ars = None
+            monto_usd = None
+
+        out = OperationOut.model_validate(o)
+        out.monto_ars = monto_ars
+        out.monto_usd = monto_usd
+        result.append(out)
+
+    return result
 
 
 @router.post("/sync")

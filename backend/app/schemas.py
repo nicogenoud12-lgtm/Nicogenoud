@@ -101,6 +101,8 @@ class OperationOut(BaseModel):
     iva: Optional[float]
     monto_neto: Optional[float]
     moneda: Optional[str]
+    monto_ars: Optional[float] = None
+    monto_usd: Optional[float] = None
 
     class Config:
         from_attributes = True

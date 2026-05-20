@@ -39,6 +39,8 @@ export default function OperacionesScreen() {
     return (ops.data || []).filter((o) => {
       if (kinds.length && !kinds.includes(o.event_kind)) return false;
       if (search && !(o.simbolo || "").toLowerCase().includes(search.toLowerCase())) return false;
+      const amount = o.monto_neto ?? o.monto_operado ?? 0;
+      if (Math.abs(Number(amount)) < 0.005) return false;
       return true;
     });
   }, [ops.data, kinds, search]);
@@ -92,12 +94,34 @@ export default function OperacionesScreen() {
       render: (r) => (r.precio != null ? formatNumber(r.precio) : "—"),
     },
     {
-      key: "monto_neto",
-      label: "Monto neto",
+      key: "monto_ars",
+      label: "Monto $",
       align: "right",
       sortable: true,
-      value: (r) => Number(r.monto_neto || r.monto_operado || 0),
-      render: (r) => fmt(r.monto_neto != null ? r.monto_neto : r.monto_operado),
+      value: (r) => Number(r.monto_ars ?? 0),
+      render: (r) =>
+        r.monto_ars != null ? (
+          <span className={r.currency_kind === "ARS" ? "text-white" : "text-textMuted text-xs"}>
+            {formatARS(r.monto_ars)}
+          </span>
+        ) : (
+          <span className="text-textMuted">—</span>
+        ),
+    },
+    {
+      key: "monto_usd",
+      label: "Monto U$D",
+      align: "right",
+      sortable: true,
+      value: (r) => Number(r.monto_usd ?? 0),
+      render: (r) =>
+        r.monto_usd != null ? (
+          <span className={r.currency_kind !== "ARS" ? "text-white" : "text-textMuted text-xs"}>
+            {formatUSD(r.monto_usd)}
+          </span>
+        ) : (
+          <span className="text-textMuted">—</span>
+        ),
     },
     {
       key: "currency_kind",
