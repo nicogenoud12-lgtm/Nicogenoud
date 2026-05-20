@@ -67,7 +67,7 @@ export default function Layout() {
       </aside>
 
       <div className="flex-1 md:ml-0 min-w-0 flex flex-col">
-        <header className="md:hidden flex items-center justify-between px-4 py-3 border-b border-border bg-surface">
+        <header className="md:hidden sticky top-0 z-20 flex items-center justify-between px-4 py-3 border-b border-border bg-surface">
           <button
             onClick={toggleSidebar}
             className="btn-secondary p-2"
