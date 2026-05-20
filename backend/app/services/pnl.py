@@ -26,11 +26,11 @@ def _f(v) -> float:
 
 
 _BUCKETS = {
-    "COMPRA":       ("total_compras_ars",    "total_compras_usd"),
-    "VENTA":        ("total_ventas_ars",     "total_ventas_usd"),
-    "DIVIDENDO":    ("total_dividendos_ars", "total_dividendos_usd"),
-    "RENTA":        ("total_renta_ars",      "total_renta_usd"),
-    "AMORTIZACION": ("total_renta_ars",      "total_renta_usd"),
+    "COMPRA":       ("total_compras_ars",        "total_compras_usd"),
+    "VENTA":        ("total_ventas_ars",          "total_ventas_usd"),
+    "DIVIDENDO":    ("total_dividendos_ars",      "total_dividendos_usd"),
+    "RENTA":        ("total_renta_ars",           "total_renta_usd"),
+    "AMORTIZACION": ("total_amortizaciones_ars",  "total_amortizaciones_usd"),
 }
 
 
@@ -54,10 +54,11 @@ def operations_summary(db: Session, user_id: int, *, from_date: date, to_date: d
         return fx_for_date(mep, sorted_dates, d)
 
     totals: dict[str, float] = {
-        "total_compras_ars": 0.0,    "total_compras_usd": 0.0,
-        "total_ventas_ars": 0.0,     "total_ventas_usd": 0.0,
-        "total_renta_ars": 0.0,      "total_renta_usd": 0.0,
-        "total_dividendos_ars": 0.0, "total_dividendos_usd": 0.0,
+        "total_compras_ars": 0.0,          "total_compras_usd": 0.0,
+        "total_ventas_ars": 0.0,           "total_ventas_usd": 0.0,
+        "total_renta_ars": 0.0,            "total_renta_usd": 0.0,
+        "total_amortizaciones_ars": 0.0,   "total_amortizaciones_usd": 0.0,
+        "total_dividendos_ars": 0.0,       "total_dividendos_usd": 0.0,
     }
     missing_fx = 0
     by_simbolo: dict[str, dict] = defaultdict(
@@ -68,6 +69,7 @@ def operations_summary(db: Session, user_id: int, *, from_date: date, to_date: d
         lambda: {"compras_ars": 0.0, "ventas_ars": 0.0,
                  "compras_usd": 0.0, "ventas_usd": 0.0,
                  "renta_ars": 0.0, "renta_usd": 0.0,
+                 "amortizaciones_ars": 0.0, "amortizaciones_usd": 0.0,
                  "dividendos_ars": 0.0, "dividendos_usd": 0.0}
     )
 
@@ -105,9 +107,12 @@ def operations_summary(db: Session, user_id: int, *, from_date: date, to_date: d
             by_simbolo[sym]["ventas_usd"] += usd
             by_mes[mes]["ventas_ars"] += ars
             by_mes[mes]["ventas_usd"] += usd
-        elif o.event_kind in ("RENTA", "AMORTIZACION"):
+        elif o.event_kind == "RENTA":
             by_mes[mes]["renta_ars"] += ars
             by_mes[mes]["renta_usd"] += usd
+        elif o.event_kind == "AMORTIZACION":
+            by_mes[mes]["amortizaciones_ars"] += ars
+            by_mes[mes]["amortizaciones_usd"] += usd
         elif o.event_kind == "DIVIDENDO":
             by_mes[mes]["dividendos_ars"] += ars
             by_mes[mes]["dividendos_usd"] += usd

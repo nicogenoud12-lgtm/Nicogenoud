@@ -131,7 +131,7 @@ export default function OperacionesScreen() {
           ⚠ {s.fx_missing_count} operación{s.fx_missing_count !== 1 ? "es" : ""} sin tasa MEP histórica — sincronizá para completar
         </div>
       )}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
         <KpiCard
           label="Compras"
           value={fmt(currency === "USD" ? s.total_compras_usd : s.total_compras_ars)}
@@ -145,6 +145,11 @@ export default function OperacionesScreen() {
         <KpiCard
           label="Renta"
           value={fmt(currency === "USD" ? s.total_renta_usd : s.total_renta_ars)}
+          sub={fxSub}
+        />
+        <KpiCard
+          label="Amortizaciones"
+          value={fmt(currency === "USD" ? s.total_amortizaciones_usd : s.total_amortizaciones_ars)}
           sub={fxSub}
         />
         <KpiCard
