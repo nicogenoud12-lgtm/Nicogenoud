@@ -13,7 +13,7 @@ export default function OperacionesScreen() {
   const currency = useUiStore((s) => s.currency);
   const qc = useQueryClient();
   const [year] = useState(2026);
-  const [kinds, setKinds] = useState(["COMPRA", "VENTA", "SUSCRIPCION", "RESCATE"]);
+  const [kinds, setKinds] = useState([]);
   const [search, setSearch] = useState("");
 
   const ops = useQuery({
