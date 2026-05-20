@@ -47,6 +47,16 @@ export default function OperacionesScreen() {
 
   const fmt = currency === "USD" ? formatUSD : formatARS;
   const s = sum.data || {};
+
+  const tableFooter = useMemo(() => {
+    const totalARS = rows.reduce((acc, r) => acc + (r.monto_ars ?? 0), 0);
+    const totalUSD = rows.reduce((acc, r) => acc + (r.monto_usd ?? 0), 0);
+    return {
+      fecha_operada: `${rows.length} op.`,
+      monto_ars: formatARS(totalARS),
+      monto_usd: formatUSD(totalUSD),
+    };
+  }, [rows]);
   const fxSub = "convertido a MEP del día";
 
   const columns = [
@@ -197,7 +207,7 @@ export default function OperacionesScreen() {
         ))}
       </div>
 
-      {ops.isLoading ? <LoadingSpinner /> : <DataTable columns={columns} rows={rows} />}
+      {ops.isLoading ? <LoadingSpinner /> : <DataTable columns={columns} rows={rows} footer={tableFooter} />}
     </div>
   );
 }

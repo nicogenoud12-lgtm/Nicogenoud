@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 
-export default function DataTable({ columns, rows, emptyText = "Sin datos" }) {
+export default function DataTable({ columns, rows, emptyText = "Sin datos", footer }) {
   const [sort, setSort] = useState({ key: null, dir: "asc" });
 
   const sorted = useMemo(() => {
@@ -81,6 +81,22 @@ export default function DataTable({ columns, rows, emptyText = "Sin datos" }) {
             ))
           )}
         </tbody>
+        {footer && (
+          <tfoot>
+            <tr className="border-t-2 border-border bg-surfaceAlt font-semibold text-sm">
+              {columns.map((c) => (
+                <td
+                  key={c.key}
+                  className={`px-3 py-2 whitespace-nowrap ${
+                    c.align === "right" ? "text-right tabular-nums" : ""
+                  }`}
+                >
+                  {footer[c.key] ?? ""}
+                </td>
+              ))}
+            </tr>
+          </tfoot>
+        )}
       </table>
     </div>
   );
