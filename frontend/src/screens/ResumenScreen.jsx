@@ -63,7 +63,7 @@ function UpcomingPayments({ events, currency, fmt }) {
             <th className="text-left pb-2 pr-4">Símbolo</th>
             <th className="text-left pb-2 pr-4">Tipo</th>
             <th className="text-left pb-2 pr-4">Fecha estimada</th>
-            <th className="text-right pb-2">Último monto</th>
+            <th className="text-right pb-2">Monto estimado</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-border">
@@ -90,7 +90,7 @@ function UpcomingPayments({ events, currency, fmt }) {
           ))}
         </tbody>
       </table>
-      <div className="mt-2 text-xs text-textMuted">* Fechas estimadas basadas en el historial de pagos. Corroborar con IOL.</div>
+      <div className="mt-2 text-xs text-textMuted">* Fechas y montos estimados sobre tenencia actual. Corroborar con IOL.</div>
     </div>
   );
 }

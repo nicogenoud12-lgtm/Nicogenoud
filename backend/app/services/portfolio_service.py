@@ -303,25 +303,38 @@ def upcoming_events(db: Session, user_id: int) -> list[dict]:
         if not last.fecha_operada:
             continue
 
-        # Estimate interval from last 2 payments; fallback by class
-        if len(events) >= 2 and events[1].fecha_operada:
-            interval = abs((events[0].fecha_operada - events[1].fecha_operada).days)
-            interval = max(interval, 14)  # floor at 2 weeks
+        # Find two events with distinct dates (RENTA + AMORTIZACION can share a date)
+        prev = next(
+            (e for e in events[1:] if e.fecha_operada and e.fecha_operada != last.fecha_operada),
+            None,
+        )
+        if prev and prev.fecha_operada:
+            interval = abs((last.fecha_operada - prev.fecha_operada).days)
+            interval = max(interval, 14)
         else:
-            interval = 30 if h.clase == "ON" else 180
+            # ONs argentina: mayoría trimestral (90d), bonos soberanos semestral (180d)
+            interval = 90 if h.clase == "ON" else 180
 
         next_date = last.fecha_operada + timedelta(days=interval)
         while next_date <= today:
             next_date += timedelta(days=interval)
 
-        last_amount = abs(_f(last.monto_neto) if last.monto_neto is not None else _f(last.monto_operado))
+        last_amount_raw = abs(_f(last.monto_neto) if last.monto_neto is not None else _f(last.monto_operado))
+        # Scale projected amount by current holding nominal vs nominal at last payment
+        op_cantidad = _f(last.cantidad) if last.cantidad is not None else 0.0
+        h_cantidad = _f(h.cantidad) if h.cantidad is not None else 0.0
+        if op_cantidad > 0 and h_cantidad > 0:
+            estimated_amount = (last_amount_raw / op_cantidad) * h_cantidad
+        else:
+            estimated_amount = last_amount_raw
+
         results.append({
             "simbolo": h.simbolo,
             "descripcion": h.descripcion or h.simbolo,
             "clase": h.clase,
             "event_kind": last.event_kind,
             "estimated_date": next_date.isoformat(),
-            "last_amount": round(last_amount, 2),
+            "last_amount": round(estimated_amount, 2),
             "currency_kind": last.currency_kind,
             "interval_days": interval,
         })
