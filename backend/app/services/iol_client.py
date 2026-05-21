@@ -130,30 +130,36 @@ class IolClient:
         )
 
     async def get_movimientos(self, *, desde: date, hasta: date) -> list:
-        """Fetch account movements (net amounts post-retention).
+        """Fetch account movements in 30-day chunks to avoid IOL 500 on long ranges."""
+        from datetime import timedelta
 
-        IOL endpoint probed in order: /api/v2/MiCuenta/Movimientos,
-        /api/v2/Cuenta/Movimientos. Returns empty list on 404 (degraded gracefully).
-        """
-        params = {
-            "fechaDesde": desde.isoformat(),
-            "fechaHasta": hasta.isoformat(),
-        }
+        all_items: list = []
+        chunk_start = desde
+        while chunk_start <= hasta:
+            chunk_end = min(chunk_start + timedelta(days=29), hasta)
+            chunk = await self._get_movimientos_chunk(chunk_start, chunk_end)
+            all_items.extend(chunk)
+            chunk_start = chunk_end + timedelta(days=1)
+        log.info("get_movimientos: total=%d for %s→%s", len(all_items), desde, hasta)
+        return all_items
+
+    async def _get_movimientos_chunk(self, desde: date, hasta: date) -> list:
+        params = {"fechaDesde": desde.isoformat(), "fechaHasta": hasta.isoformat()}
         for path in ("/api/v2/MiCuenta/Movimientos", "/api/v2/Cuenta/Movimientos"):
             try:
                 result = await self._request("GET", path, params=params)
                 if isinstance(result, list):
-                    log.info("IOL %s returned %d movimientos", path, len(result))
+                    log.info("IOL %s [%s→%s] returned %d items", path, desde, hasta, len(result))
                     return result
                 if isinstance(result, dict):
                     for key in ("movimientos", "items", "data"):
                         if key in result and isinstance(result[key], list):
                             items = result[key]
-                            log.info("IOL %s[%s] returned %d movimientos", path, key, len(items))
+                            log.info("IOL %s[%s] [%s→%s] returned %d items", path, key, desde, hasta, len(items))
                             return items
                 log.warning("IOL %s unexpected shape: %s", path, list(result.keys()) if isinstance(result, dict) else type(result))
                 return []
             except Exception as e:
-                log.warning("IOL %s failed (%s), trying next", path, e)
-        log.warning("get_movimientos: all endpoints failed, returning []")
+                log.warning("IOL %s [%s→%s] failed (%s), trying next", path, desde, hasta, e)
+        log.warning("_get_movimientos_chunk: all endpoints failed for %s→%s", desde, hasta)
         return []
