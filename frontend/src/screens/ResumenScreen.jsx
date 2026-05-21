@@ -12,6 +12,13 @@ import { formatARS, formatUSD, formatDate } from "../utils/format";
 import { useUiStore } from "../store/uiStore";
 import { periodToDays } from "../utils/periods";
 
+function efectiveVar(h) {
+  const v = h.variacion_dia;
+  if (v != null && Number(v) !== 0) return { value: Number(v), isYesterday: false };
+  if (h.variacion_dia_prev != null) return { value: Number(h.variacion_dia_prev), isYesterday: true };
+  return null;
+}
+
 function MoversTable({ items, currency, fmt }) {
   if (!items.length) {
     return <div className="text-sm text-textMuted py-2">Sin datos del día disponibles.</div>;
@@ -20,8 +27,9 @@ function MoversTable({ items, currency, fmt }) {
     <ul className="divide-y divide-border">
       {items.map((h) => {
         const val = currency === "USD" ? h.valuacion_usd : h.valuacion_ars;
-        const pct = h.variacion_dia;
-        const isPos = pct >= 0;
+        const ev = efectiveVar(h);
+        if (!ev) return null;
+        const isPos = ev.value >= 0;
         return (
           <li key={h.id} className="py-2 flex items-center justify-between gap-2">
             <div className="min-w-0">
@@ -31,7 +39,8 @@ function MoversTable({ items, currency, fmt }) {
             <div className="text-right tabular-nums shrink-0">
               <div className="text-sm">{fmt(val)}</div>
               <div className={`text-xs font-semibold ${isPos ? "text-success" : "text-danger"}`}>
-                {isPos ? "+" : ""}{Number(pct).toFixed(2)}%
+                {isPos ? "+" : ""}{ev.value.toFixed(2)}%
+                {ev.isYesterday && <span className="text-textMuted font-normal ml-1">ayer</span>}
               </div>
             </div>
           </li>
@@ -122,10 +131,9 @@ export default function ResumenScreen() {
 
   const allHoldings = holdings.data || [];
 
-  // Only holdings with actual daily data from IOL
-  const withDaily = allHoldings.filter((h) => h.variacion_dia != null);
-  const gainers = [...withDaily].sort((a, b) => b.variacion_dia - a.variacion_dia).slice(0, 10);
-  const losers = [...withDaily].sort((a, b) => a.variacion_dia - b.variacion_dia).slice(0, 10);
+  const withDaily = allHoldings.filter((h) => efectiveVar(h) !== null);
+  const gainers = [...withDaily].sort((a, b) => efectiveVar(b).value - efectiveVar(a).value).slice(0, 10);
+  const losers = [...withDaily].sort((a, b) => efectiveVar(a).value - efectiveVar(b).value).slice(0, 10);
 
   const allSorted = [...allHoldings].sort((a, b) => Number(b.valuacion_ars) - Number(a.valuacion_ars));
   const displayHoldings = selectedClass
@@ -213,11 +221,16 @@ export default function ResumenScreen() {
                 </div>
                 <div className="text-right tabular-nums">
                   <div>{fmt(currency === "USD" ? h.valuacion_usd : h.valuacion_ars)}</div>
-                  {h.variacion_dia != null && (
-                    <div className={`text-xs ${Number(h.variacion_dia) >= 0 ? "text-success" : "text-danger"}`}>
-                      {Number(h.variacion_dia).toFixed(2)}% hoy
-                    </div>
-                  )}
+                  {(() => {
+                    const ev = efectiveVar(h);
+                    if (!ev) return null;
+                    return (
+                      <div className={`text-xs ${ev.value >= 0 ? "text-success" : "text-danger"}`}>
+                        {ev.value >= 0 ? "+" : ""}{ev.value.toFixed(2)}%
+                        {ev.isYesterday && <span className="text-textMuted ml-1">ayer</span>}
+                      </div>
+                    );
+                  })()}
                 </div>
               </li>
             ))}

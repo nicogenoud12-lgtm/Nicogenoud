@@ -149,7 +149,10 @@ async def refresh_holdings(db: Session, user_id: int) -> list[Holding]:
                 holding.valuacion_usd = valuacion_usd
                 holding.ganancia_porcentaje = row_data["ganancia_porcentaje"]
                 holding.ganancia_dinero = row_data["ganancia_dinero"]
-                holding.variacion_dia = row_data.get("variacion_dia")
+                new_var = row_data.get("variacion_dia")
+                holding.variacion_dia = new_var
+                if new_var is not None and float(new_var) != 0.0:
+                    holding.variacion_dia_prev = new_var
                 holding.moneda = row_data["moneda"]
                 rows.append(holding)
 
@@ -170,6 +173,8 @@ async def refresh_holdings(db: Session, user_id: int) -> list[Holding]:
                     )
                     if var is not None:
                         holding.variacion_dia = var
+                        if float(var) != 0.0:
+                            holding.variacion_dia_prev = var
                         log.debug("cotizacion fallback %s variacion=%.4f", simbolo, var)
                 except Exception as e:
                     log.debug("cotizacion fallback failed %s: %s", simbolo, e)
