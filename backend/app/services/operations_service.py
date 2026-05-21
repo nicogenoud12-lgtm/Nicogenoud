@@ -12,7 +12,7 @@ from .classifier import classify_asset, classify_event
 from .dolar_service import backfill_historical_mep
 from .iol_client import IolClient
 
-_ENRICHABLE_KINDS = ("DIVIDENDO", "RENTA", "AMORTIZACION")
+_ENRICHABLE_KINDS = ("DIVIDENDO", "RENTA", "AMORTIZACION", "COMPRA", "VENTA", "SUSCRIPCION", "RESCATE")
 
 log = logging.getLogger(__name__)
 
@@ -116,30 +116,17 @@ async def sync_operations(
         op.cantidad = _f(raw.get("cantidadOperada") or raw.get("cantidad"))
         op.precio = _f(raw.get("precioOperado") or raw.get("precio"))
         op.monto_operado = _f(raw.get("montoOperado") or raw.get("monto"))
-        op.comisiones = _f(
-            raw.get("comision") or raw.get("comisiones") or
-            raw.get("comisionBroker") or raw.get("comisionTotal") or
-            raw.get("Comision") or raw.get("comisionNeta")
-        ) or 0.0
-        op.derechos_mercado = _f(
-            raw.get("derechosMercado") or raw.get("derechos") or raw.get("derechoMercado")
-        ) or 0.0
-        op.iva = _f(raw.get("iva") or raw.get("IVA")) or 0.0
-
-        fee_keys = {k: v for k, v in raw.items() if any(
-            kw in k.lower() for kw in ("comis", "derecho", "iva", "gasto", "fee", "monto", "total")
-        )}
-        log.warning("op %s event=%s gross=%.4f comis=%.4f fee_keys=%s",
-                    iol_numero, event_kind, op.monto_operado or 0, op.comisiones or 0, fee_keys)
+        op.comisiones = 0.0   # IOL no envía comisión en /operaciones; el neto real viene de /movimientos
+        op.derechos_mercado = 0.0
+        op.iva = 0.0
 
         gross = op.monto_operado or 0.0
-        fees = (op.comisiones or 0.0) + (op.derechos_mercado or 0.0) + (op.iva or 0.0)
         if event_kind in ("COMPRA", "SUSCRIPCION"):
-            op.monto_neto = -(gross + fees)
+            op.monto_neto = -gross
         elif event_kind in ("VENTA", "RESCATE"):
-            op.monto_neto = gross - fees
+            op.monto_neto = gross
         else:
-            # DIVIDENDO/RENTA/AMORTIZACION/OTRO: bruto declarado; enriched below if /movimientos available
+            # DIVIDENDO/RENTA/AMORTIZACION/OTRO: bruto; enriched below with /movimientos net
             op.monto_neto = gross
         op.moneda = _str(moneda)
         op.raw_json = raw
@@ -200,7 +187,11 @@ async def _enrich_with_movimientos(
             continue
         neto = _f(m.get("monto") or m.get("importe") or m.get("montoNeto"))
         if neto is not None and neto != 0:
-            op.monto_neto = abs(neto)  # movimientos siempre positivos para créditos
+            # COMPRA/SUSCRIPCION = money out → negative; VENTA/RESCATE y créditos = positive
+            if op.event_kind in ("COMPRA", "SUSCRIPCION"):
+                op.monto_neto = -abs(neto)
+            else:
+                op.monto_neto = abs(neto)
             updated += 1
 
     if updated:
