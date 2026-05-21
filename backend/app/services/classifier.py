@@ -44,6 +44,8 @@ _SOBERANO_PREFIXES = (
     "AL29", "AL30", "AL35", "AL41", "AE38",
     "GD29", "GD30", "GD35", "GD38", "GD41", "GD46",
     "TX26", "TX28", "T2X", "TZX", "TG", "TY", "TV",
+    # Bopreales (BCRA) — series B/C/D/E
+    "BPOB", "BPOC", "BPOD", "BPOE",
 )
 
 

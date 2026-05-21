@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from datetime import date, datetime, timezone
 from decimal import Decimal
 from typing import Iterable
@@ -297,6 +298,29 @@ def upcoming_events(db: Session, user_id: int) -> list[dict]:
             .all()
         )
         if not events:
+            # Fallback for zero-coupon / bullet bonds with no payment history.
+            # Infer maturity year from ticker suffix (TZX26 → 2026, GD35 → 2035).
+            from .ons_whitelist import normalize_ticker as _nt
+            base, _ = _nt(h.simbolo)
+            m = re.match(r'^[A-Z]+(\d{2})$', base)
+            if m:
+                bond_year = int(m.group(1)) + 2000
+                if today.year <= bond_year <= today.year + 12:
+                    maturity = date(bond_year, 6, 30)
+                    if maturity > today:
+                        moneda_low = (h.moneda or "").lower()
+                        cur = "ARS" if ("peso" in moneda_low or moneda_low == "ars" or not moneda_low) else "USD_MEP"
+                        estimated = _f(h.valuacion_ars) if cur == "ARS" else _f(h.valuacion_usd)
+                        results.append({
+                            "simbolo": h.simbolo,
+                            "descripcion": h.descripcion or h.simbolo,
+                            "clase": h.clase,
+                            "event_kind": "AMORTIZACION",
+                            "estimated_date": maturity.isoformat(),
+                            "last_amount": round(estimated, 2),
+                            "currency_kind": cur,
+                            "interval_days": 0,
+                        })
             continue
 
         last = events[0]
