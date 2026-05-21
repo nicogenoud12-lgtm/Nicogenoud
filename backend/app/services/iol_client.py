@@ -144,8 +144,13 @@ class IolClient:
         return all_items
 
     async def _get_movimientos_chunk(self, desde: date, hasta: date) -> list:
-        params = {"fechaDesde": desde.isoformat(), "fechaHasta": hasta.isoformat()}
-        for path in ("/api/v2/MiCuenta/Movimientos", "/api/v2/Cuenta/Movimientos"):
+        attempts = [
+            ("/api/v2/MiCuenta/Movimientos",  {"fechaDesde": desde.isoformat(), "fechaHasta": hasta.isoformat()}),
+            ("/api/v2/Cuenta/Movimientos",     {"fechaDesde": desde.isoformat(), "fechaHasta": hasta.isoformat()}),
+            ("/api/v2/MiCuenta/Movimientos",   {"filtro.fechaDesde": desde.isoformat(), "filtro.fechaHasta": hasta.isoformat()}),
+            ("/api/v2/movimientos",            {"fechaDesde": desde.isoformat(), "fechaHasta": hasta.isoformat()}),
+        ]
+        for path, params in attempts:
             try:
                 result = await self._request("GET", path, params=params)
                 if isinstance(result, list):
@@ -157,8 +162,8 @@ class IolClient:
                             items = result[key]
                             log.info("IOL %s[%s] [%s→%s] returned %d items", path, key, desde, hasta, len(items))
                             return items
-                log.warning("IOL %s unexpected shape: %s", path, list(result.keys()) if isinstance(result, dict) else type(result))
-                return []
+                    log.warning("IOL %s unexpected shape keys=%s", path, list(result.keys()))
+                    return []
             except Exception as e:
                 log.warning("IOL %s [%s→%s] failed (%s), trying next", path, desde, hasta, e)
         log.warning("_get_movimientos_chunk: all endpoints failed for %s→%s", desde, hasta)

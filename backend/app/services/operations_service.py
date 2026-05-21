@@ -115,18 +115,25 @@ async def sync_operations(
         op.mercado = _str(mercado)
         op.cantidad = _f(raw.get("cantidadOperada") or raw.get("cantidad"))
         op.precio = _f(raw.get("precioOperado") or raw.get("precio"))
-        op.monto_operado = _f(raw.get("montoOperado") or raw.get("monto"))
-        op.comisiones = 0.0   # IOL no envía comisión en /operaciones; el neto real viene de /movimientos
+        monto_operado = _f(raw.get("montoOperado"))
+        monto_raw = _f(raw.get("monto"))
+        op.monto_operado = monto_operado or monto_raw
+        op.comisiones = 0.0
         op.derechos_mercado = 0.0
         op.iva = 0.0
 
         gross = op.monto_operado or 0.0
         if event_kind in ("COMPRA", "SUSCRIPCION"):
-            op.monto_neto = -gross
+            # IOL no envía comisión en /operaciones. Para COMPRAs el campo `monto`
+            # incluye las fees (total debitado), mientras que montoOperado es el valor bruto.
+            # Usamos monto cuando es mayor (total con fees), si no usamos montoOperado.
+            total_pagado = monto_raw if (monto_raw and monto_operado and monto_raw > monto_operado) else gross
+            op.monto_neto = -total_pagado
         elif event_kind in ("VENTA", "RESCATE"):
+            # Para VENTAs no hay forma de obtener la comisión sin movimientos.
+            # Se usa montoOperado (bruto); el enriquecimiento con movimientos lo corrige si funciona.
             op.monto_neto = gross
         else:
-            # DIVIDENDO/RENTA/AMORTIZACION/OTRO: bruto; enriched below with /movimientos net
             op.monto_neto = gross
         op.moneda = _str(moneda)
         op.raw_json = raw
@@ -168,7 +175,7 @@ async def _enrich_with_movimientos(
         return 0
 
     by_numero = {str(m.get("numero") or m.get("id") or ""): m for m in moves if isinstance(m, dict)}
-    log.warning("movimientos: total=%d keys_sample=%s", len(moves), list(by_numero.keys())[:10])
+    log.info("movimientos: total=%d", len(moves))
 
     ops = (
         db.query(Operation)
@@ -185,8 +192,6 @@ async def _enrich_with_movimientos(
     for op in ops:
         m = by_numero.get(op.iol_numero)
         if not m:
-            if op.event_kind in ("COMPRA", "VENTA"):
-                log.warning("movimientos: NO match for op %s event=%s — movimientos doesn't include this op", op.iol_numero, op.event_kind)
             continue
         neto = _f(m.get("monto") or m.get("importe") or m.get("montoNeto"))
         if neto is not None and neto != 0:
