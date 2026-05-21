@@ -116,9 +116,21 @@ async def sync_operations(
         op.cantidad = _f(raw.get("cantidadOperada") or raw.get("cantidad"))
         op.precio = _f(raw.get("precioOperado") or raw.get("precio"))
         op.monto_operado = _f(raw.get("montoOperado") or raw.get("monto"))
-        op.comisiones = _f(raw.get("comision") or raw.get("comisiones")) or 0.0
-        op.derechos_mercado = _f(raw.get("derechosMercado")) or 0.0
-        op.iva = _f(raw.get("iva")) or 0.0
+        op.comisiones = _f(
+            raw.get("comision") or raw.get("comisiones") or
+            raw.get("comisionBroker") or raw.get("comisionTotal") or
+            raw.get("Comision") or raw.get("comisionNeta")
+        ) or 0.0
+        op.derechos_mercado = _f(
+            raw.get("derechosMercado") or raw.get("derechos") or raw.get("derechoMercado")
+        ) or 0.0
+        op.iva = _f(raw.get("iva") or raw.get("IVA")) or 0.0
+
+        fee_keys = {k: v for k, v in raw.items() if any(
+            kw in k.lower() for kw in ("comis", "derecho", "iva", "gasto", "fee", "monto", "total")
+        )}
+        log.warning("op %s event=%s gross=%.4f comis=%.4f fee_keys=%s",
+                    iol_numero, event_kind, op.monto_operado or 0, op.comisiones or 0, fee_keys)
 
         gross = op.monto_operado or 0.0
         fees = (op.comisiones or 0.0) + (op.derechos_mercado or 0.0) + (op.iva or 0.0)
