@@ -80,9 +80,11 @@ function UpcomingPayments({ events, currency, fmt }) {
               </td>
               <td className="py-2 pr-4 tabular-nums text-sm">{e.estimated_date}</td>
               <td className="py-2 text-right tabular-nums">
-                {e.currency_kind?.startsWith("USD")
-                  ? `USD ${Number(e.last_amount).toLocaleString("es-AR", { minimumFractionDigits: 2 })}`
-                  : formatARS(e.last_amount)
+                {Number(e.last_amount) === 0
+                  ? <span className="text-textMuted">pendiente</span>
+                  : e.currency_kind?.startsWith("USD")
+                    ? `USD ${Number(e.last_amount).toLocaleString("es-AR", { minimumFractionDigits: 2 })}`
+                    : formatARS(e.last_amount)
                 }
                 {e.interval_days > 0 && (
                   <div className="text-xs text-textMuted">cada ~{e.interval_days}d</div>
