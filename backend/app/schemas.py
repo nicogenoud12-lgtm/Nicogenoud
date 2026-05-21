@@ -52,6 +52,7 @@ class HoldingOut(BaseModel):
     ganancia_porcentaje: Optional[float]
     ganancia_dinero: Optional[float]
     variacion_dia: Optional[float] = None
+    variacion_dia_prev: Optional[float] = None
     moneda: Optional[str]
     updated_at: datetime
 

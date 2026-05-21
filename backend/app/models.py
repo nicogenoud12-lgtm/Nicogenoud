@@ -88,6 +88,7 @@ class Holding(Base):
     ganancia_porcentaje: Mapped[float | None] = mapped_column(Numeric(10, 4), nullable=True)
     ganancia_dinero: Mapped[float | None] = mapped_column(Numeric(18, 2), nullable=True)
     variacion_dia: Mapped[float | None] = mapped_column(Numeric(10, 4), nullable=True)
+    variacion_dia_prev: Mapped[float | None] = mapped_column(Numeric(10, 4), nullable=True)
     moneda: Mapped[str | None] = mapped_column(String(16), nullable=True)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
