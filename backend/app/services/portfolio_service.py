@@ -339,6 +339,11 @@ def upcoming_events(db: Session, user_id: int) -> list[dict]:
             # ONs argentina: mayoría trimestral (90d), bonos soberanos semestral (180d)
             interval = 90 if h.clase == "ON" else 180
 
+        # IOL registra devengamientos mensuales incluso para bonos bianuales/trimestrales.
+        # Si el intervalo detectado es < 60d y tenemos 3+ eventos, son accruals → usar 180d.
+        if interval < 60 and len(events) >= 3:
+            interval = 180
+
         next_date = last.fecha_operada + timedelta(days=interval)
         while next_date <= today:
             next_date += timedelta(days=interval)
