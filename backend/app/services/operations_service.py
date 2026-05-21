@@ -168,6 +168,7 @@ async def _enrich_with_movimientos(
         return 0
 
     by_numero = {str(m.get("numero") or m.get("id") or ""): m for m in moves if isinstance(m, dict)}
+    log.warning("movimientos: total=%d keys_sample=%s", len(moves), list(by_numero.keys())[:10])
 
     ops = (
         db.query(Operation)
@@ -184,6 +185,8 @@ async def _enrich_with_movimientos(
     for op in ops:
         m = by_numero.get(op.iol_numero)
         if not m:
+            if op.event_kind in ("COMPRA", "VENTA"):
+                log.warning("movimientos: NO match for op %s event=%s — movimientos doesn't include this op", op.iol_numero, op.event_kind)
             continue
         neto = _f(m.get("monto") or m.get("importe") or m.get("montoNeto"))
         if neto is not None and neto != 0:
