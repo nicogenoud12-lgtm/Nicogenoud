@@ -53,13 +53,15 @@ ON_BASE_TICKERS: set[str] = {
     # Tecpetrol
     "TECG", "TECO",
     # Edenor
-    "DNC1", "DNC5",
+    "DNC1", "DNC3", "DNC5",
     # Generación Mediterránea
     "GMCJ", "GMCH", "GMCO",
     # Pampa CB
     "RCCJ", "RCCK",
     # Parex / etc reserved slots
     "PARA",
+    # OceanTech / OTS series (ON USD)
+    "OTS6", "OTS60",
 }
 
 

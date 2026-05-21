@@ -84,7 +84,12 @@ function UpcomingPayments({ events, currency, fmt }) {
                   ? `USD ${Number(e.last_amount).toLocaleString("es-AR", { minimumFractionDigits: 2 })}`
                   : formatARS(e.last_amount)
                 }
-                <div className="text-xs text-textMuted">cada ~{e.interval_days}d</div>
+                {e.interval_days > 0 && (
+                  <div className="text-xs text-textMuted">cada ~{e.interval_days}d</div>
+                )}
+                {e.interval_days === 0 && (
+                  <div className="text-xs text-textMuted">vencimiento</div>
+                )}
               </td>
             </tr>
           ))}
