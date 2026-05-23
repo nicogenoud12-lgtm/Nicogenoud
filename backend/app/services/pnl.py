@@ -74,6 +74,8 @@ def operations_summary(db: Session, user_id: int, *, from_date: date, to_date: d
     )
 
     for o in ops:
+        if o.event_kind == "CAUCION":
+            continue
         amount = abs(_f(o.monto_neto) if o.monto_neto is not None else _f(o.monto_operado))
         is_usd = o.currency_kind in ("USD_MEP", "USD_CABLE")
         rate = fx(o.fecha_operada)
