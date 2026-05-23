@@ -191,7 +191,9 @@ async def refresh_holdings(db: Session, user_id: int) -> list[Holding]:
 
 
 def compute_kpis(db: Session, user_id: int, *, dolar_rate: float, dolar_source: str) -> dict:
-    holdings = db.query(Holding).filter(Holding.user_id == user_id).all()
+    holdings = db.query(Holding).filter(
+        Holding.user_id == user_id, Holding.clase != "Caucion"
+    ).all()
     total_ars = sum(_f(h.valuacion_ars) for h in holdings)
     total_usd = sum(_f(h.valuacion_usd) for h in holdings)
 
@@ -382,7 +384,9 @@ def save_snapshot(
     source: str = "scheduler",
 ) -> PortfolioSnapshot:
     target = on_date or date.today()
-    holdings = db.query(Holding).filter(Holding.user_id == user_id).all()
+    holdings = db.query(Holding).filter(
+        Holding.user_id == user_id, Holding.clase != "Caucion"
+    ).all()
     total_ars = sum(_f(h.valuacion_ars) for h in holdings)
     total_usd = sum(_f(h.valuacion_usd) for h in holdings)
     breakdown = [

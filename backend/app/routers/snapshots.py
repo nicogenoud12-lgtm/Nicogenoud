@@ -40,6 +40,29 @@ async def run_now(user: User = Depends(get_current_user), db: Session = Depends(
     return row
 
 
+@router.delete("/by-date/{date_str}")
+def delete_snapshot_by_date(
+    date_str: str,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    try:
+        target = date.fromisoformat(date_str)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Formato de fecha inválido, usar YYYY-MM-DD")
+    row = (
+        db.query(PortfolioSnapshot)
+        .filter(PortfolioSnapshot.user_id == user.id, PortfolioSnapshot.date == target)
+        .first()
+    )
+    if row is None:
+        raise HTTPException(status_code=404, detail="Snapshot not found")
+    deleted_id = row.id
+    db.delete(row)
+    db.commit()
+    return {"deleted": deleted_id, "date": date_str}
+
+
 @router.delete("/{snapshot_id}")
 def delete_snapshot(snapshot_id: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     row = (

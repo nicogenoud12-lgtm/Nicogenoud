@@ -28,6 +28,7 @@ def list_operations(
         Operation.user_id == user.id,
         Operation.fecha_operada >= desde,
         Operation.fecha_operada <= hasta,
+        Operation.event_kind != "CAUCION",
     )
     if event_kind:
         kinds = [k.strip().upper() for k in event_kind.split(",") if k.strip()]

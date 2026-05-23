@@ -134,3 +134,24 @@ def test_classify_event_compra_ym39d_is_usd_mep():
     ev, cur = classify_event(tipo="Compra", simbolo="YM39D", moneda=None, asset_class="ON")
     assert ev == "COMPRA"
     assert cur == "USD_MEP"
+
+
+def test_classify_asset_caucion():
+    assert classify_asset(simbolo="X", tipo="Cauciones") == "Caucion"
+    assert classify_asset(simbolo="X", tipo="caucion") == "Caucion"
+    assert classify_asset(simbolo="X", tipo="Cauciones bursátiles") == "Caucion"
+
+
+def test_classify_event_caucion_colocadora():
+    ev, _ = classify_event(tipo="Caucion colocadora", simbolo=None, moneda="Pesos")
+    assert ev == "CAUCION"
+
+
+def test_classify_event_caucion_rescate():
+    ev, _ = classify_event(tipo="Rescate", descripcion="Cauciones bursátiles", simbolo=None, moneda="Pesos")
+    assert ev == "CAUCION"
+
+
+def test_classify_event_caucion_by_descripcion():
+    ev, _ = classify_event(tipo=None, descripcion="Caución colocadora ARS", simbolo=None, moneda="Pesos")
+    assert ev == "CAUCION"

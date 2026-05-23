@@ -14,7 +14,7 @@ from .ons_whitelist import is_on, normalize_ticker
 
 log = logging.getLogger(__name__)
 
-EventKind = str  # COMPRA|VENTA|RENTA|AMORTIZACION|DIVIDENDO|SUSCRIPCION|RESCATE|OTRO
+EventKind = str  # COMPRA|VENTA|RENTA|AMORTIZACION|DIVIDENDO|SUSCRIPCION|RESCATE|CAUCION|OTRO
 CurrencyKind = str  # ARS|USD_MEP|USD_CABLE
 
 
@@ -36,6 +36,8 @@ _TIPO_MAP = {
     "fondoscomunesdeinversion": "FCI",
     "fondocomun": "FCI",
     "fondo": "FCI",
+    "caucion": "Caucion",
+    "cauciones": "Caucion",
 }
 
 
@@ -148,6 +150,11 @@ def classify_event(
     raw = _norm(tipo)
     desc = _norm(descripcion)
     text = f"{raw} {desc}"
+
+    # Cauciones bursátiles (colocadoras y tomadoras) — ignorar completamente.
+    # Usamos "cauci" para capturar tanto "caucion" como "caución" (con tilde).
+    if "cauci" in raw or "cauci" in desc:
+        return "CAUCION", _currency_kind_from(simbolo=simbolo, moneda=moneda, asset_class=asset_class)
 
     # Priorizamos el campo estructurado `tipo` sobre la descripción para no
     # confundir eventos combinados ("Pago de renta y amortización" en el texto
