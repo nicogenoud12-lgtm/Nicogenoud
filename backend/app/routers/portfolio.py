@@ -30,7 +30,7 @@ async def list_holdings(
             raise HTTPException(status_code=401, detail=str(e))
     rows = (
         db.query(Holding)
-        .filter(Holding.user_id == user.id)
+        .filter(Holding.user_id == user.id, Holding.clase != "Caucion")
         .order_by(Holding.valuacion_ars.desc())
         .all()
     )

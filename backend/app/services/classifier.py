@@ -94,6 +94,8 @@ def classify_asset(
 
     # 6. Descripción
     desc_low = (descripcion or "").lower()
+    if "cauci" in desc_low:
+        return "Caucion"
     if "cedear" in desc_low:
         return "CEDEAR"
     if "obligaci" in desc_low or "negoc" in desc_low:

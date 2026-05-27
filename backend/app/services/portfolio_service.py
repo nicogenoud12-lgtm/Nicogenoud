@@ -116,6 +116,9 @@ async def refresh_holdings(db: Session, user_id: int) -> list[Holding]:
                 row_data = _extract_row(activo, mercado)
                 if row_data is None:
                     continue
+                if row_data["clase"] == "Caucion":
+                    log.info("refresh_holdings: skipping caucion %s", row_data["simbolo"])
+                    continue
                 simbolo = row_data["simbolo"]
                 keep_keys.add((mercado, simbolo))
                 moneda = (row_data.get("moneda") or "").lower()

@@ -63,6 +63,36 @@ def delete_snapshot_by_date(
     return {"deleted": deleted_id, "date": date_str}
 
 
+@router.delete("/by-range/{desde}/{hasta}")
+def delete_snapshots_by_range(
+    desde: str,
+    hasta: str,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    try:
+        d_desde = date.fromisoformat(desde)
+        d_hasta = date.fromisoformat(hasta)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Formato de fecha inválido, usar YYYY-MM-DD")
+    rows = (
+        db.query(PortfolioSnapshot)
+        .filter(
+            PortfolioSnapshot.user_id == user.id,
+            PortfolioSnapshot.date >= d_desde,
+            PortfolioSnapshot.date <= d_hasta,
+        )
+        .all()
+    )
+    if not rows:
+        raise HTTPException(status_code=404, detail="No snapshots in range")
+    deleted_ids = [r.id for r in rows]
+    for r in rows:
+        db.delete(r)
+    db.commit()
+    return {"deleted": deleted_ids, "desde": desde, "hasta": hasta}
+
+
 @router.delete("/{snapshot_id}")
 def delete_snapshot(snapshot_id: int, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     row = (
