@@ -140,6 +140,8 @@ def test_classify_asset_caucion():
     assert classify_asset(simbolo="X", tipo="Cauciones") == "Caucion"
     assert classify_asset(simbolo="X", tipo="caucion") == "Caucion"
     assert classify_asset(simbolo="X", tipo="Cauciones bursátiles") == "Caucion"
+    assert classify_asset(simbolo="PESOS", tipo=None, descripcion="Caución colocadora ARS") == "Caucion"
+    assert classify_asset(simbolo="X", tipo=None, descripcion="Caucion tomadora") == "Caucion"
 
 
 def test_classify_event_caucion_colocadora():
