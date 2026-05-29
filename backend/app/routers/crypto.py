@@ -5,12 +5,15 @@ from sqlalchemy.orm import Session
 
 from ..database import get_db
 from ..deps import get_current_user
-from ..models import CryptoHolding, CryptoSnapshot, User
+from ..models import CryptoHolding, CryptoSale, CryptoSnapshot, User
 from ..schemas import (
     CoinSearchResult,
     CryptoHoldingIn,
     CryptoHoldingOut,
     CryptoReport,
+    CryptoSaleOut,
+    CryptoSalesReport,
+    CryptoSellIn,
     CryptoSnapshotOut,
 )
 from ..services import coingecko, crypto_service
@@ -129,6 +132,59 @@ def delete_holding(
     if h is None:
         raise HTTPException(status_code=404, detail="Holding not found")
     db.delete(h)
+    db.commit()
+    return None
+
+
+@router.post("/holdings/{holding_id}/sell", response_model=CryptoSaleOut, status_code=201)
+async def sell_holding(
+    holding_id: int,
+    body: CryptoSellIn,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Vende (parcial o total) una tenencia. Calcula el P&L realizado contra el
+    costo promedio previo, registra la venta y reduce/elimina la tenencia."""
+    error, sale = await crypto_service.sell_holding(
+        db,
+        user.id,
+        holding_id,
+        cantidad=body.cantidad,
+        price_usd=body.price_usd,
+        notas=body.notas,
+    )
+    if error == "Holding not found":
+        raise HTTPException(status_code=404, detail=error)
+    if error:
+        raise HTTPException(status_code=400, detail=error)
+    return sale
+
+
+@router.get("/sales", response_model=CryptoSalesReport)
+async def list_sales(
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    rate, source = await crypto_service._get_dolar_rate(db)
+    return crypto_service.sales_report(db, user.id, rate, source)
+
+
+@router.delete("/sales/{sale_id}", status_code=204)
+def delete_sale(
+    sale_id: int,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Borra un registro de venta. NO restaura la tenencia — sólo limpia el
+    historial de ventas realizadas."""
+    s = (
+        db.query(CryptoSale)
+        .filter(CryptoSale.id == sale_id, CryptoSale.user_id == user.id)
+        .first()
+    )
+    if s is None:
+        raise HTTPException(status_code=404, detail="Sale not found")
+    db.delete(s)
     db.commit()
     return None
 

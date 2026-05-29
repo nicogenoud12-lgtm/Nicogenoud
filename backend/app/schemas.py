@@ -239,3 +239,42 @@ class CryptoSnapshotOut(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class CryptoSellIn(BaseModel):
+    """Venta de una tenencia. `price_usd` opcional — si no se manda, se toma el
+    precio en vivo (Binance/CoinGecko)."""
+
+    cantidad: float = Field(gt=0)
+    price_usd: Optional[float] = Field(default=None, gt=0)
+    notas: Optional[str] = Field(default=None, max_length=500)
+
+
+class CryptoSaleOut(BaseModel):
+    id: int
+    symbol: str
+    name: Optional[str]
+    coingecko_id: Optional[str]
+    cantidad: float
+    costo_usd_unit: Optional[float]
+    price_usd: float
+    proceeds_usd: float
+    cost_total_usd: Optional[float]
+    pnl_usd: Optional[float]
+    pnl_pct: Optional[float]
+    dolar_rate: float
+    notas: Optional[str]
+    sold_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class CryptoSalesReport(BaseModel):
+    items: list[CryptoSaleOut]
+    total_proceeds_usd: float
+    total_cost_usd: float
+    total_pnl_usd: float
+    total_pnl_pct: Optional[float]
+    ars_rate: float
+    dolar_source: str

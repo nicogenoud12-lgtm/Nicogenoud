@@ -12,6 +12,15 @@ export const updateCryptoHolding = (id, payload) =>
 export const deleteCryptoHolding = (id) =>
   api.delete(`/crypto/holdings/${id}`).then((r) => r.data);
 
+export const sellCryptoHolding = (id, payload) =>
+  api.post(`/crypto/holdings/${id}/sell`, payload).then((r) => r.data);
+
+export const listCryptoSales = () =>
+  api.get("/crypto/sales").then((r) => r.data);
+
+export const deleteCryptoSale = (id) =>
+  api.delete(`/crypto/sales/${id}`).then((r) => r.data);
+
 export const searchCoins = (q) =>
   api.get("/crypto/search", { params: { q } }).then((r) => r.data);
 

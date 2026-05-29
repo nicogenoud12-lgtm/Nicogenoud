@@ -5,10 +5,13 @@ import {
   backfillCryptoSnapshots,
   createCryptoHolding,
   deleteCryptoHolding,
+  deleteCryptoSale,
   getCryptoReport,
   listCryptoHoldings,
+  listCryptoSales,
   listCryptoSnapshots,
   searchCoins,
+  sellCryptoHolding,
   updateCryptoHolding,
 } from "../api/crypto";
 import AssetDonutChart from "../components/charts/AssetDonutChart.jsx";
@@ -16,7 +19,7 @@ import PortfolioLineChart from "../components/charts/PortfolioLineChart.jsx";
 import KpiCard from "../components/KpiCard.jsx";
 import LoadingSpinner from "../components/LoadingSpinner.jsx";
 import { useUiStore } from "../store/uiStore";
-import { formatARS, formatNumber, formatUSD } from "../utils/format";
+import { formatARS, formatDate, formatNumber, formatUSD } from "../utils/format";
 
 // CoinGecko ID → CoinMarketCap URL slug (only exceptions; most match exactly)
 const CMC_SLUG_OVERRIDES = {
@@ -137,6 +140,170 @@ function CoinPicker({ value, onPick }) {
   );
 }
 
+function SellModal({ item, onClose, onConfirm, pending, error }) {
+  const held = Number(item.cantidad || 0);
+  const livePrice = item.price_usd != null ? Number(item.price_usd) : null;
+  const costUnit = item.costo_usd_unit != null ? Number(item.costo_usd_unit) : null;
+
+  const [qty, setQty] = useState(String(held));
+  const [price, setPrice] = useState(livePrice != null ? String(livePrice) : "");
+  const [notas, setNotas] = useState("");
+
+  const qtyN = toNumberOrNull(qty);
+  const priceN = toNumberOrNull(price);
+  const validQty = qtyN != null && qtyN > 0 && qtyN <= held + 1e-9;
+  const validPrice = priceN != null && priceN > 0;
+
+  // Preview del P&L realizado contra el costo promedio actual.
+  const proceeds = validQty && validPrice ? qtyN * priceN : null;
+  const costTotal = validQty && costUnit != null ? qtyN * costUnit : null;
+  const pnl = proceeds != null && costTotal != null ? proceeds - costTotal : null;
+  const pnlPct = pnl != null && costTotal ? (pnl / costTotal) * 100 : null;
+
+  function submit(e) {
+    e.preventDefault();
+    if (!validQty || !validPrice) return;
+    onConfirm({
+      cantidad: qtyN,
+      price_usd: priceN,
+      notas: notas.trim() || null,
+    });
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+      <div className="card w-full max-w-md p-5 space-y-4">
+        <div className="flex items-center gap-2">
+          <h2 className="text-lg font-semibold">Vender {item.symbol}</h2>
+          <button
+            className="ml-auto text-textMuted hover:text-text"
+            onClick={onClose}
+            type="button"
+          >
+            ✕
+          </button>
+        </div>
+
+        <form onSubmit={submit} className="space-y-3">
+          <div>
+            <div className="label mb-1 flex items-center justify-between">
+              <span>Cantidad a vender</span>
+              <button
+                type="button"
+                className="text-xs text-accent hover:underline"
+                onClick={() => setQty(String(held))}
+              >
+                Máx: {formatNumber(held)}
+              </button>
+            </div>
+            <input
+              className="input"
+              type="number"
+              step="any"
+              min="0"
+              value={qty}
+              onChange={(e) => setQty(e.target.value)}
+              required
+            />
+            {qtyN != null && qtyN > held + 1e-9 && (
+              <div className="text-xs text-danger mt-1">
+                Supera tu tenencia ({formatNumber(held)}).
+              </div>
+            )}
+          </div>
+
+          <div>
+            <div className="label mb-1 flex items-center justify-between">
+              <span>Precio de venta (USD / unidad)</span>
+              {livePrice != null && (
+                <button
+                  type="button"
+                  className="text-xs text-accent hover:underline"
+                  onClick={() => setPrice(String(livePrice))}
+                >
+                  En vivo: {formatUSD(livePrice)}
+                </button>
+              )}
+            </div>
+            <input
+              className="input"
+              type="number"
+              step="any"
+              min="0"
+              placeholder="Precio en USD"
+              value={price}
+              onChange={(e) => setPrice(e.target.value)}
+              required
+            />
+          </div>
+
+          <div>
+            <div className="label mb-1">Notas</div>
+            <input
+              className="input"
+              placeholder="Opcional"
+              value={notas}
+              onChange={(e) => setNotas(e.target.value)}
+            />
+          </div>
+
+          <div className="rounded-lg bg-surfaceAlt p-3 text-sm space-y-1">
+            <div className="flex justify-between">
+              <span className="text-textMuted">Ingreso por venta</span>
+              <span className="tabular-nums">
+                {proceeds != null ? formatUSD(proceeds) : "—"}
+              </span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-textMuted">Costo (promedio)</span>
+              <span className="tabular-nums">
+                {costTotal != null ? formatUSD(costTotal) : "—"}
+              </span>
+            </div>
+            <div className="flex justify-between font-medium">
+              <span className="text-textMuted">P&L realizado</span>
+              <span
+                className={`tabular-nums ${
+                  pnl == null
+                    ? ""
+                    : pnl >= 0
+                      ? "text-success"
+                      : "text-danger"
+                }`}
+              >
+                {pnl != null ? formatUSD(pnl) : "—"}
+                {pnlPct != null && (
+                  <> ({pnlPct >= 0 ? "+" : ""}{pnlPct.toFixed(2)}%)</>
+                )}
+              </span>
+            </div>
+            {qtyN != null && qtyN < held - 1e-9 && (
+              <div className="text-xs text-textMuted pt-1">
+                Quedan {formatNumber(held - qtyN)} {item.symbol} en cartera.
+              </div>
+            )}
+          </div>
+
+          {error && <div className="text-sm text-danger">{error}</div>}
+
+          <div className="flex gap-2 justify-end">
+            <button type="button" className="btn-secondary" onClick={onClose}>
+              Cancelar
+            </button>
+            <button
+              type="submit"
+              className="btn-primary"
+              disabled={pending || !validQty || !validPrice}
+            >
+              {pending ? "Vendiendo…" : "Confirmar venta"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 export default function CryptoScreen() {
   const qc = useQueryClient();
   const currency = useUiStore((s) => s.currency);
@@ -164,11 +331,18 @@ export default function CryptoScreen() {
     queryKey: ["crypto-snapshots", snapDays],
     queryFn: () => listCryptoSnapshots(snapDays),
   });
+  const sales = useQuery({
+    queryKey: ["crypto-sales"],
+    queryFn: listCryptoSales,
+  });
+
+  const [sellTarget, setSellTarget] = useState(null);
 
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: ["crypto-holdings"] });
     qc.invalidateQueries({ queryKey: ["crypto-report"] });
     qc.invalidateQueries({ queryKey: ["crypto-snapshots"] });
+    qc.invalidateQueries({ queryKey: ["crypto-sales"] });
   };
 
   const createM = useMutation({
@@ -188,6 +362,17 @@ export default function CryptoScreen() {
   const deleteM = useMutation({
     mutationFn: deleteCryptoHolding,
     onSuccess: invalidate,
+  });
+  const sellM = useMutation({
+    mutationFn: ({ id, payload }) => sellCryptoHolding(id, payload),
+    onSuccess: () => {
+      invalidate();
+      setSellTarget(null);
+    },
+  });
+  const deleteSaleM = useMutation({
+    mutationFn: deleteCryptoSale,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["crypto-sales"] }),
   });
   const backfillM = useMutation({
     mutationFn: () => backfillCryptoSnapshots(),
@@ -764,6 +949,13 @@ export default function CryptoScreen() {
                       </td>
                       <td className="px-3 py-2 text-right whitespace-nowrap">
                         <button
+                          className="text-warn hover:underline mr-3 disabled:opacity-50"
+                          disabled={!(it.cantidad > 0)}
+                          onClick={() => setSellTarget(it)}
+                        >
+                          Vender
+                        </button>
+                        <button
                           className="text-accent hover:underline mr-3"
                           onClick={() =>
                             startEdit(
@@ -792,6 +984,151 @@ export default function CryptoScreen() {
             </table>
           </div>
         )}
+      </div>
+
+      <SalesHistory
+        sales={sales.data}
+        loading={sales.isLoading}
+        currency={currency}
+        fmt={fmt}
+        arsRate={r?.ars_rate}
+        onDelete={(id) => deleteSaleM.mutate(id)}
+        deleting={deleteSaleM.isPending}
+      />
+
+      {sellTarget && (
+        <SellModal
+          key={sellTarget.id}
+          item={sellTarget}
+          pending={sellM.isPending}
+          error={
+            sellM.isError
+              ? sellM.error?.response?.data?.detail || "No se pudo registrar la venta."
+              : null
+          }
+          onClose={() => {
+            sellM.reset();
+            setSellTarget(null);
+          }}
+          onConfirm={(payload) =>
+            sellM.mutate({ id: sellTarget.id, payload })
+          }
+        />
+      )}
+    </div>
+  );
+}
+
+function SalesHistory({ sales, loading, currency, fmt, arsRate, onDelete, deleting }) {
+  if (loading) return null;
+  const items = sales?.items || [];
+  if (items.length === 0) return null;
+
+  const conv = (usd) =>
+    usd == null
+      ? null
+      : currency === "USD"
+        ? usd
+        : usd * (arsRate || 0);
+  const totalPnl = conv(sales.total_pnl_usd);
+
+  return (
+    <div className="card p-4 space-y-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="label">Ventas realizadas</div>
+        <div className="ml-auto text-sm">
+          <span className="text-textMuted mr-2">P&L realizado:</span>
+          <span
+            className={`font-medium tabular-nums ${
+              (sales.total_pnl_usd || 0) >= 0 ? "text-success" : "text-danger"
+            }`}
+          >
+            {fmt(totalPnl || 0)}
+            {sales.total_pnl_pct != null && (
+              <> ({sales.total_pnl_pct >= 0 ? "+" : ""}
+              {sales.total_pnl_pct.toFixed(2)}%)</>
+            )}
+          </span>
+        </div>
+      </div>
+      <div className="overflow-x-auto -mx-4">
+        <table className="w-full text-sm">
+          <thead className="bg-surfaceAlt text-textMuted text-xs uppercase">
+            <tr>
+              <th className="px-3 py-2 text-left">Fecha</th>
+              <th className="px-3 py-2 text-left">Símbolo</th>
+              <th className="px-3 py-2 text-right">Cantidad</th>
+              <th className="px-3 py-2 text-right">Precio venta</th>
+              <th className="px-3 py-2 text-right">Ingreso</th>
+              <th className="px-3 py-2 text-right">Costo</th>
+              <th className="px-3 py-2 text-right">P&L</th>
+              <th className="px-3 py-2 text-right">Acciones</th>
+            </tr>
+          </thead>
+          <tbody>
+            {items.map((s) => {
+              const proceeds = conv(s.proceeds_usd);
+              const cost = conv(s.cost_total_usd);
+              const pnl = conv(s.pnl_usd);
+              const price =
+                currency === "USD"
+                  ? s.price_usd
+                  : s.price_usd * (arsRate || 0);
+              return (
+                <tr key={s.id} className="border-t border-border hover:bg-surfaceAlt/50">
+                  <td className="px-3 py-2 text-textMuted whitespace-nowrap">
+                    {formatDate(s.sold_at)}
+                  </td>
+                  <td className="px-3 py-2">
+                    <div className="font-medium">{s.symbol}</div>
+                    {s.notas && (
+                      <div className="text-xs text-textMuted">{s.notas}</div>
+                    )}
+                  </td>
+                  <td className="px-3 py-2 text-right tabular-nums">
+                    {formatNumber(s.cantidad)}
+                  </td>
+                  <td className="px-3 py-2 text-right tabular-nums">
+                    {price != null ? fmt(price) : "—"}
+                  </td>
+                  <td className="px-3 py-2 text-right tabular-nums">
+                    {proceeds != null ? fmt(proceeds) : "—"}
+                  </td>
+                  <td className="px-3 py-2 text-right tabular-nums">
+                    {cost != null ? fmt(cost) : "—"}
+                  </td>
+                  <td className="px-3 py-2 text-right tabular-nums">
+                    {pnl != null ? (
+                      <span className={pnl >= 0 ? "text-success" : "text-danger"}>
+                        {fmt(pnl)}
+                        {s.pnl_pct != null && (
+                          <div className="text-xs">
+                            {s.pnl_pct >= 0 ? "+" : ""}
+                            {s.pnl_pct.toFixed(2)}%
+                          </div>
+                        )}
+                      </span>
+                    ) : (
+                      "—"
+                    )}
+                  </td>
+                  <td className="px-3 py-2 text-right">
+                    <button
+                      className="text-danger hover:underline disabled:opacity-50"
+                      disabled={deleting}
+                      onClick={() => {
+                        if (confirm(`¿Borrar este registro de venta de ${s.symbol}? No restaura la tenencia.`))
+                          onDelete(s.id);
+                      }}
+                    >
+                      Borrar
+                    </button>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
       </div>
     </div>
   );

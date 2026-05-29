@@ -13,7 +13,7 @@ from typing import Optional
 from sqlalchemy.orm import Session
 
 from ..crud import get_setting
-from ..models import CryptoHolding, CryptoSnapshot, DolarQuote
+from ..models import CryptoHolding, CryptoSale, CryptoSnapshot, DolarQuote
 from . import binance as binance_svc
 from . import coingecko, dolar_service
 from .binance import BinanceError
@@ -52,6 +52,137 @@ async def _get_dolar_rate(db: Session) -> tuple[float, str]:
         log.exception("crypto report: dolar fetch failed")
         rate = 0.0
     return rate, source
+
+
+# Por debajo de esta cantidad consideramos la tenencia liquidada (evita restos
+# por error de redondeo flotante al vender el total).
+QTY_EPSILON = 1e-9
+
+
+async def _get_live_price_usd(coingecko_id: str) -> Optional[float]:
+    """Precio USD en vivo de un solo coin: Binance primero, CoinGecko fallback."""
+    cid = (coingecko_id or "").strip().lower()
+    if not cid:
+        return None
+    try:
+        prices = await binance_svc.get_prices([cid])
+        info = prices.get(cid)
+        if info and info.get("usd") is not None:
+            return float(info["usd"])
+    except BinanceError as e:
+        log.warning("crypto sell: Binance price failed for %s: %s", cid, e)
+    try:
+        cg = await coingecko.get_prices([cid], vs_currencies=["usd"], include_24h_change=False)
+        info = cg.get(cid)
+        if info and info.get("usd") is not None:
+            return float(info["usd"])
+    except CoinGeckoError as e:
+        log.warning("crypto sell: CoinGecko price failed for %s: %s", cid, e)
+    return None
+
+
+async def sell_holding(
+    db: Session,
+    user_id: int,
+    holding_id: int,
+    *,
+    cantidad: float,
+    price_usd: Optional[float] = None,
+    notas: Optional[str] = None,
+) -> tuple[Optional[str], Optional[CryptoSale]]:
+    """Vende (parcial o totalmente) una tenencia crypto.
+
+    Calcula el P&L realizado contra el costo promedio (`costo_usd_unit`) de la
+    tenencia previa, registra un `CryptoSale` y reduce la cantidad (manteniendo
+    el costo promedio). Si la cantidad llega a ~0 elimina la tenencia.
+
+    Devuelve `(error, sale)`: si `error` no es None, no se aplicó nada.
+    """
+    holding = (
+        db.query(CryptoHolding)
+        .filter(CryptoHolding.id == holding_id, CryptoHolding.user_id == user_id)
+        .first()
+    )
+    if holding is None:
+        return "Holding not found", None
+
+    qty_held = float(holding.cantidad or 0)
+    qty_sold = float(cantidad)
+    if qty_sold <= 0:
+        return "La cantidad a vender debe ser mayor a 0", None
+    if qty_sold > qty_held + QTY_EPSILON:
+        return (
+            f"No podés vender {qty_sold} {holding.symbol}: sólo tenés {qty_held}",
+            None,
+        )
+
+    # Precio de venta: el provisto o el precio en vivo.
+    sale_price = float(price_usd) if price_usd is not None else None
+    if sale_price is None:
+        sale_price = await _get_live_price_usd(holding.coingecko_id or "")
+    if sale_price is None:
+        return (
+            "No se pudo obtener un precio de venta. Ingresá el precio manualmente.",
+            None,
+        )
+
+    cost_unit = float(holding.costo_usd_unit) if holding.costo_usd_unit is not None else None
+    cost_total = (cost_unit * qty_sold) if cost_unit is not None else None
+    proceeds = sale_price * qty_sold
+    pnl = (proceeds - cost_total) if cost_total is not None else None
+    pnl_pct = (pnl / cost_total * 100) if (pnl is not None and cost_total) else None
+
+    ars_rate, _src = await _get_dolar_rate(db)
+
+    sale = CryptoSale(
+        user_id=user_id,
+        symbol=holding.symbol,
+        name=holding.name,
+        coingecko_id=holding.coingecko_id,
+        cantidad=qty_sold,
+        costo_usd_unit=cost_unit,
+        price_usd=sale_price,
+        proceeds_usd=proceeds,
+        cost_total_usd=cost_total,
+        pnl_usd=pnl,
+        pnl_pct=pnl_pct,
+        dolar_rate=ars_rate or 0,
+        notas=(notas or None) and notas.strip(),
+    )
+    db.add(sale)
+
+    remaining = qty_held - qty_sold
+    if remaining <= QTY_EPSILON:
+        db.delete(holding)
+    else:
+        # Costo promedio se mantiene; sólo baja la cantidad.
+        holding.cantidad = remaining
+
+    db.commit()
+    db.refresh(sale)
+    return None, sale
+
+
+def sales_report(db: Session, user_id: int, ars_rate: float, dolar_source: str) -> dict:
+    sales: list[CryptoSale] = (
+        db.query(CryptoSale)
+        .filter(CryptoSale.user_id == user_id)
+        .order_by(CryptoSale.sold_at.desc(), CryptoSale.id.desc())
+        .all()
+    )
+    total_proceeds = sum(float(s.proceeds_usd or 0) for s in sales)
+    total_cost = sum(float(s.cost_total_usd or 0) for s in sales if s.cost_total_usd is not None)
+    total_pnl = sum(float(s.pnl_usd or 0) for s in sales if s.pnl_usd is not None)
+    total_pnl_pct = (total_pnl / total_cost * 100) if total_cost else None
+    return {
+        "items": sales,
+        "total_proceeds_usd": total_proceeds,
+        "total_cost_usd": total_cost,
+        "total_pnl_usd": total_pnl,
+        "total_pnl_pct": total_pnl_pct,
+        "ars_rate": ars_rate or 0.0,
+        "dolar_source": dolar_source,
+    }
 
 
 async def build_report(db: Session, user_id: int) -> dict:
