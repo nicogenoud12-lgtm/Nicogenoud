@@ -37,37 +37,19 @@ export default function PortfolioLineChart({ data, selectedClass, period, onPeri
     });
   }, [data, selectedClass]);
 
-  // Encuentra el valor de ~1 mes antes de la fecha dada para calcular la variación.
-  const prevMonthValue = useMemo(() => {
+  // Devuelve el valor del punto inmediatamente anterior (día anterior) al de la fecha dada.
+  const prevValue = useMemo(() => {
     return (currentDate) => {
-      const cur = new Date(currentDate);
-      if (isNaN(cur)) return null;
-      const target = new Date(cur);
-      target.setMonth(target.getMonth() - 1);
-      // Último punto con fecha <= (fecha actual - 1 mes); si no hay, el primero anterior a la actual.
-      let best = null;
-      for (const d of series) {
-        const dt = new Date(d.date);
-        if (isNaN(dt) || dt >= cur) continue;
-        if (dt <= target) {
-          if (!best || new Date(d.date) > new Date(best.date)) best = d;
-        }
-      }
-      if (!best) {
-        for (const d of series) {
-          const dt = new Date(d.date);
-          if (isNaN(dt) || dt >= cur) continue;
-          if (!best || new Date(d.date) > new Date(best.date)) best = d;
-        }
-      }
-      return best ? best[dataKey] : null;
+      const idx = series.findIndex((d) => d.date === currentDate);
+      if (idx <= 0) return null;
+      return series[idx - 1][dataKey];
     };
   }, [series, dataKey]);
 
   const renderTooltip = ({ active, payload, label }) => {
     if (!active || !payload || payload.length === 0) return null;
     const value = payload[0].value;
-    const prev = prevMonthValue(label);
+    const prev = prevValue(label);
     let variation = null;
     if (prev != null && isFinite(prev) && prev !== 0) {
       variation = ((value - prev) / Math.abs(prev)) * 100;
@@ -87,7 +69,7 @@ export default function PortfolioLineChart({ data, selectedClass, period, onPeri
         <div style={{ color: t.axis, marginBottom: 2 }}>{formatDateShort(label)}</div>
         <div style={{ fontWeight: 600 }}>{fmt(value)}</div>
         <div style={{ color: t.axis, fontSize: 11, marginTop: 4 }}>
-          vs. mes anterior:{" "}
+          vs. día anterior:{" "}
           {variation == null ? (
             <span style={{ color: t.axis }}>—</span>
           ) : (
