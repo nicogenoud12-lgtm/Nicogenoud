@@ -37,6 +37,70 @@ export default function PortfolioLineChart({ data, selectedClass, period, onPeri
     });
   }, [data, selectedClass]);
 
+  // Encuentra el valor de ~1 mes antes de la fecha dada para calcular la variación.
+  const prevMonthValue = useMemo(() => {
+    return (currentDate) => {
+      const cur = new Date(currentDate);
+      if (isNaN(cur)) return null;
+      const target = new Date(cur);
+      target.setMonth(target.getMonth() - 1);
+      // Último punto con fecha <= (fecha actual - 1 mes); si no hay, el primero anterior a la actual.
+      let best = null;
+      for (const d of series) {
+        const dt = new Date(d.date);
+        if (isNaN(dt) || dt >= cur) continue;
+        if (dt <= target) {
+          if (!best || new Date(d.date) > new Date(best.date)) best = d;
+        }
+      }
+      if (!best) {
+        for (const d of series) {
+          const dt = new Date(d.date);
+          if (isNaN(dt) || dt >= cur) continue;
+          if (!best || new Date(d.date) > new Date(best.date)) best = d;
+        }
+      }
+      return best ? best[dataKey] : null;
+    };
+  }, [series, dataKey]);
+
+  const renderTooltip = ({ active, payload, label }) => {
+    if (!active || !payload || payload.length === 0) return null;
+    const value = payload[0].value;
+    const prev = prevMonthValue(label);
+    let variation = null;
+    if (prev != null && isFinite(prev) && prev !== 0) {
+      variation = ((value - prev) / Math.abs(prev)) * 100;
+    }
+    const up = variation != null && variation >= 0;
+    return (
+      <div
+        style={{
+          background: t.tooltipBg,
+          border: `1px solid ${t.tooltipBorder}`,
+          borderRadius: 8,
+          color: t.text,
+          fontSize: 12,
+          padding: "8px 10px",
+        }}
+      >
+        <div style={{ color: t.axis, marginBottom: 2 }}>{formatDateShort(label)}</div>
+        <div style={{ fontWeight: 600 }}>{fmt(value)}</div>
+        <div style={{ color: t.axis, fontSize: 11, marginTop: 4 }}>
+          vs. mes anterior:{" "}
+          {variation == null ? (
+            <span style={{ color: t.axis }}>—</span>
+          ) : (
+            <span style={{ color: up ? t.success : t.danger, fontWeight: 600 }}>
+              {up ? "+" : ""}
+              {variation.toFixed(2)}%
+            </span>
+          )}
+        </div>
+      </div>
+    );
+  };
+
   const compactFmt = (v) => {
     const sign = v < 0 ? "-" : "";
     const abs = Math.abs(v);
@@ -87,18 +151,7 @@ export default function PortfolioLineChart({ data, selectedClass, period, onPeri
             width={44}
             domain={yDomain}
           />
-          <Tooltip
-            wrapperStyle={{ zIndex: 50 }}
-            contentStyle={{
-              background: t.tooltipBg,
-              border: `1px solid ${t.tooltipBorder}`,
-              borderRadius: 8,
-              color: t.text,
-              fontSize: 12,
-            }}
-            labelFormatter={formatDateShort}
-            formatter={(value, name) => [fmt(value), name === "total_ars" ? "ARS" : "USD"]}
-          />
+          <Tooltip wrapperStyle={{ zIndex: 50 }} content={renderTooltip} />
           <Line
             type="monotone"
             dataKey={dataKey}
