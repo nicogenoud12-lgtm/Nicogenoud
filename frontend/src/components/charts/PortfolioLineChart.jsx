@@ -11,7 +11,7 @@ import {
 import { useMemo } from "react";
 import { useUiStore } from "../../store/uiStore";
 import { formatARS, formatDateShort, formatUSD } from "../../utils/format";
-import { timeWeightedReturns } from "../../utils/performance";
+import { portfolioReturns } from "../../utils/performance";
 import { compactNumber, tooltipStyle, useChartTokens } from "./chartTheme";
 import PeriodFilter from "./PeriodFilter";
 
@@ -58,7 +58,31 @@ export default function PortfolioLineChart({ data, selectedClass, period, onPeri
         flujo_usd: Number(d.flujo_usd || 0),
       };
     });
-    const perf = timeWeightedReturns(base.map((d) => ({ value: d[dataKey], flow: d[`flujo_${flowKey}`] })));
+    // Tenencias del punto (IOL guarda cantidad y valuación por activo); crypto no tiene cantidades
+    const holdingsOf = (d) =>
+      (Array.isArray(d.breakdown_json) ? d.breakdown_json : [])
+        .filter((h) => h.cantidad != null && (!selectedClass || h.clase === selectedClass))
+        .map((h) => ({
+          key: `${h.mercado || ""}:${h.simbolo}`,
+          sym: h.simbolo,
+          qty: Number(h.cantidad),
+          value: Number(h[`valuacion_${flowKey}`] || 0),
+        }));
+    const incomeOf = (d) =>
+      selectedClass
+        ? Number(d.ingreso_por_clase?.[selectedClass]?.[flowKey] || 0)
+        : Number(d[`ingreso_${flowKey}`] || 0);
+    const perf = portfolioReturns(
+      base.map((d) => ({
+        value: d[dataKey],
+        flow: d[`flujo_${flowKey}`],
+        income: incomeOf(d),
+        amort: Object.fromEntries(
+          Object.entries(d.amort_por_simbolo || {}).map(([sym, v]) => [sym, Number(v?.[flowKey] || 0)])
+        ),
+        holdings: holdingsOf(d),
+      }))
+    );
     return base.map((d, i) => ({ ...d, ...perf[i] }));
   }, [data, selectedClass, dataKey, flowKey]);
 
@@ -81,7 +105,8 @@ export default function PortfolioLineChart({ data, selectedClass, period, onPeri
     if (idx == null) return null;
     const point = series[idx];
     const prevPoint = idx > 0 ? series[idx - 1] : null;
-    const flujo = point[`flujo_${flowKey}`];
+    // Flujo implícito en los cambios de tenencias (o el de las operaciones si no hay cantidades)
+    const flujo = point.flow;
     const variation = point.dayPct;
     // Si faltó algún snapshot, aclaramos contra qué fecha se compara
     let vsLabel = "día anterior";
@@ -116,7 +141,8 @@ export default function PortfolioLineChart({ data, selectedClass, period, onPeri
             <span style={{ color: tone(variation), fontWeight: 600 }}>{pct(variation)}</span>
           )}
         </div>
-        {prevPoint && Math.abs(flujo) >= 0.01 && (
+        {point.unreliable && <div style={muted}>Datos inconsistentes ese día: no se cuenta en el rendimiento</div>}
+        {prevPoint && point.flowMark !== 0 && (
           <div style={muted}>
             {flujo > 0 ? "Compras netas" : "Ventas / amortizaciones"}: {fmt(Math.abs(flujo))}
           </div>

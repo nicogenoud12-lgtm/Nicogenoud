@@ -159,6 +159,12 @@ class SnapshotOut(BaseModel):
     flujo_ars: float = 0.0
     flujo_usd: float = 0.0
     flujo_por_clase: dict[str, dict[str, float]] = {}
+    # Renta + dividendos cobrados en el tramo (rendimiento, no aporte)
+    ingreso_ars: float = 0.0
+    ingreso_usd: float = 0.0
+    ingreso_por_clase: dict[str, dict[str, float]] = {}
+    # Amortizaciones cobradas en el tramo, por símbolo de la tenencia
+    amort_por_simbolo: dict[str, dict[str, float]] = {}
 
     class Config:
         from_attributes = True

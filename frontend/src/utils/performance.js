@@ -1,28 +1,109 @@
-// Rendimiento ponderado en el tiempo (TWR): encadena el rendimiento de cada tramo
-// descontando la plata que entró o salió, así una compra no se lee como ganancia.
-//   r_t = (V_t − V_{t−1} − F_t) / V_{t−1}
-//   acumulado_t = Π (1 + r_i) − 1
-// `points`: [{ value, flow }] en orden cronológico. `flow` = aportes (+) / retiros (−)
-// desde el punto anterior. Devuelve, por punto, el rendimiento del tramo y el acumulado
-// (ambos en %) y si hubo un movimiento de plata relevante para marcarlo en el gráfico.
+// Rendimiento ponderado en el tiempo (TWR) de la cartera, encadenando tramos entre snapshots.
+//
+// Método principal (IOL): por tenencias. El rendimiento de un tramo es cómo le fue a lo que
+// ya se tenía al inicio: Σ cant_ant × precio_actual (+ cobros) / Σ valor_ant − 1, sobre las
+// tenencias presentes en ambos snapshots. No depende de los montos de las operaciones, así
+// que una compra mal registrada o informada un día tarde no puede distorsionarlo.
+//
+// Respaldo (crypto o snapshots sin cantidades): por flujos. r = (V − V_ant − flujo) / V_ant.
+//
+// Un tramo con un movimiento imposible para una cartera (datos inconsistentes) no se acumula:
+// se marca como no confiable y cuenta como 0.
 
-// Movimientos menores a esto (sobre el valor anterior) no se marcan: evita ruido de centavos
+// Movimientos de plata menores a esto (sobre el valor anterior) no se marcan en el gráfico
 export const FLOW_MARK_MIN_SHARE = 0.001;
+// Variación diaria máxima creíble; por encima es un error de datos, no mercado
+export const MAX_DAILY_MOVE = 0.35;
+// Un cobro mayor a esto (sobre el valor anterior) es un dato inconsistente y se ignora
+const MAX_INCOME_SHARE = 0.2;
 
-export function timeWeightedReturns(points) {
+function toMap(holdings) {
+  const m = new Map();
+  for (const h of holdings || []) {
+    const qty = Number(h.qty);
+    const value = Number(h.value);
+    if (qty > 0 && value >= 0 && isFinite(qty) && isFinite(value)) m.set(h.key, { qty, value, sym: h.sym });
+  }
+  return m;
+}
+
+// Rendimiento y flujo implícito de un tramo a partir de las tenencias; null si no alcanza la data.
+// `cur.amort` = { simbolo: monto } amortizado en el tramo: para ese bono el rendimiento es
+// (valor actual + amortizado) / valor anterior, sin importar si IOL bajó el precio, la
+// cantidad, o si venció y ya no está en la cartera.
+function holdingsStep(prev, cur) {
+  const a = toMap(prev.holdings);
+  const b = toMap(cur.holdings);
+  if (a.size === 0 || b.size === 0) return null;
+  const amort = cur.amort || {};
+
+  let base = 0;
+  let end = 0;
+  let flow = 0;
+  const amortized = new Set();
+  for (const [key, p] of a) {
+    if (p.value <= 0) continue;
+    const c = b.get(key);
+    const paid = Number(amort[p.sym]) || 0;
+    if (paid > 0 && paid <= p.value * 1.5) {
+      base += p.value;
+      end += (c ? c.value : 0) + paid;
+      amortized.add(key);
+    } else if (c) {
+      base += p.value;
+      end += p.qty * (c.value / c.qty);
+    }
+  }
+  if (base <= 0) return null;
+
+  // Flujo = plata puesta o sacada de las posiciones: cambio de cantidad × precio actual
+  for (const [key, c] of b) {
+    if (!amortized.has(key)) flow += (c.qty - (a.get(key)?.qty || 0)) * (c.value / c.qty);
+  }
+  for (const [key, p] of a) if (!b.has(key) && !amortized.has(key)) flow -= p.value;
+  // Lo amortizado sale de las tenencias (se marca como retiro) aunque no afecte el rendimiento
+  for (const key of amortized) flow -= Number(amort[a.get(key).sym]) || 0;
+
+  let income = Number(cur.income) || 0;
+  if (income < 0 || income > base * MAX_INCOME_SHARE) income = 0;
+
+  return { r: (end + income) / base - 1, flow };
+}
+
+export function portfolioReturns(points) {
   let growth = 1;
   return points.map((p, i) => {
     const value = Number(p.value) || 0;
-    const flow = Number(p.flow) || 0;
-    if (i === 0) {
-      return { dayPct: null, cumPct: 0, flowMark: 0 };
+    if (i === 0) return { dayPct: null, cumPct: 0, flow: 0, flowMark: 0, unreliable: false };
+
+    const prevPoint = points[i - 1];
+    const prevValue = Number(prevPoint.value) || 0;
+    let r = null;
+    let flow = Number(p.flow) || 0;
+
+    const step = holdingsStep(prevPoint, p);
+    if (step) {
+      r = step.r;
+      flow = step.flow;
+    } else if (prevValue > 0) {
+      r = (value - prevValue - flow) / prevValue;
     }
-    const prev = Number(points[i - 1].value) || 0;
-    // Sin valor previo (ej. primera compra de una clase) el tramo es sólo aporte: rendimiento 0
-    const r = prev > 0 ? (value - prev - flow) / prev : 0;
-    growth *= 1 + r;
-    const base = prev > 0 ? prev : value;
-    const flowMark = base > 0 && Math.abs(flow) >= base * FLOW_MARK_MIN_SHARE ? Math.sign(flow) : 0;
-    return { dayPct: prev > 0 ? r * 100 : null, cumPct: (growth - 1) * 100, flowMark };
+
+    let unreliable = false;
+    if (r != null && (!isFinite(r) || r <= -0.9 || Math.abs(r) > MAX_DAILY_MOVE)) {
+      r = 0;
+      unreliable = true;
+    }
+    if (r != null) growth *= 1 + r;
+
+    const shareBase = prevValue > 0 ? prevValue : value;
+    const flowMark = shareBase > 0 && Math.abs(flow) >= shareBase * FLOW_MARK_MIN_SHARE ? Math.sign(flow) : 0;
+    return {
+      dayPct: r == null ? null : r * 100,
+      cumPct: (growth - 1) * 100,
+      flow,
+      flowMark,
+      unreliable,
+    };
   });
 }

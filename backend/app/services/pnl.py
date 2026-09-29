@@ -162,13 +162,34 @@ _FLOW_SIGN = {
 
 def net_flows(db: Session, user_id: int, *, from_date: date, to_date: date) -> list[dict]:
     """Aportes (+) y retiros (−) de las tenencias por operación, en ARS y USD al MEP del día."""
+    return _signed_events(db, user_id, _FLOW_SIGN, from_date=from_date, to_date=to_date)
+
+
+# Cobros que rinde la cartera: se suman al rendimiento (total return), no son aportes.
+# La amortización va aparte y por símbolo: devuelve capital de un bono puntual y el
+# rendimiento tiene que compensarla contra la baja de ese mismo bono.
+_INCOME_SIGN = {"RENTA": 1, "DIVIDENDO": 1}
+_AMORT_SIGN = {"AMORTIZACION": 1}
+
+
+def income_events(db: Session, user_id: int, *, from_date: date, to_date: date) -> list[dict]:
+    """Renta y dividendos cobrados, en ARS y USD al MEP del día."""
+    return _signed_events(db, user_id, _INCOME_SIGN, from_date=from_date, to_date=to_date)
+
+
+def amortization_events(db: Session, user_id: int, *, from_date: date, to_date: date) -> list[dict]:
+    """Amortizaciones (y rescates al vencimiento) cobradas, en ARS y USD al MEP del día."""
+    return _signed_events(db, user_id, _AMORT_SIGN, from_date=from_date, to_date=to_date)
+
+
+def _signed_events(db: Session, user_id: int, signs: dict, *, from_date: date, to_date: date) -> list[dict]:
     ops = (
         db.query(Operation)
         .filter(
             Operation.user_id == user_id,
             Operation.fecha_operada >= from_date,
             Operation.fecha_operada <= to_date,
-            Operation.event_kind.in_(list(_FLOW_SIGN)),
+            Operation.event_kind.in_(list(signs)),
         )
         .all()
     )
@@ -177,7 +198,7 @@ def net_flows(db: Session, user_id: int, *, from_date: date, to_date: date) -> l
     out = []
     for o in ops:
         amount = abs(_f(o.monto_neto) if o.monto_neto is not None else _f(o.monto_operado))
-        sign = _FLOW_SIGN[o.event_kind]
+        sign = signs[o.event_kind]
         is_usd = o.currency_kind in ("USD_MEP", "USD_CABLE")
         rate = fx_for_date(mep, sorted_dates, o.fecha_operada)
         if rate and rate > 0:
