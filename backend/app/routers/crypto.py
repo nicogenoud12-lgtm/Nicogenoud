@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 
 from ..database import get_db
 from ..deps import get_current_user
-from ..models import CryptoHolding, CryptoSale, CryptoSnapshot, User
+from ..models import CryptoHolding, CryptoSale, User
 from ..schemas import (
     CoinSearchResult,
     CryptoHoldingIn,
@@ -214,13 +214,11 @@ def list_snapshots(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    """Snapshots diarios + `flujo_usd`/`flujo_ars`: plata que entró/salió del
+    portfolio crypto desde el snapshot anterior (para separar rendimiento de
+    aportes/retiros en el gráfico)."""
     since = date.today() - timedelta(days=days)
-    return (
-        db.query(CryptoSnapshot)
-        .filter(CryptoSnapshot.user_id == user.id, CryptoSnapshot.date >= since)
-        .order_by(CryptoSnapshot.date.asc())
-        .all()
-    )
+    return crypto_service.snapshots_with_flows(db, user.id, since)
 
 
 @router.post("/backfill")
@@ -229,7 +227,7 @@ async def backfill_snapshots(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Recompute daily snapshots from `since` to today using current holdings
-    and historical CoinGecko prices. Existing snapshots in the range get
-    overwritten."""
+    """Completa los snapshots diarios faltantes desde `since` hasta hoy con
+    precios históricos. Reconstruye cantidades y costo de cada día sumando lo
+    vendido después. Nunca pisa snapshots existentes."""
     return await crypto_service.backfill_history(db, user.id, since=since)

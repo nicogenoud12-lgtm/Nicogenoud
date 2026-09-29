@@ -10,7 +10,7 @@ import asyncio
 import json
 import logging
 import os
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 
 import httpx
 
@@ -36,7 +36,10 @@ _CGID_TO_SYMBOL: dict[str, str] = {
     "litecoin": "LTCUSDT",
     "cosmos": "ATOMUSDT",
     "avalanche-2": "AVAXUSDT",
-    "matic-network": "MATICUSDT",
+    # MATIC pasó a llamarse POL en Binance (sept 2024): MATICUSDT se deslistó
+    # y el par vivo es POLUSDT. Mapeamos los IDs viejos y el nuevo.
+    "matic-network": "POLUSDT",
+    "polygon-ecosystem-token": "POLUSDT",
     "chainlink": "LINKUSDT",
     "uniswap": "UNIUSDT",
     "ripple": "XRPUSDT",
@@ -51,7 +54,6 @@ _CGID_TO_SYMBOL: dict[str, str] = {
     "hedera-hashgraph": "HBARUSDT",
     "internet-computer": "ICPUSDT",
     "nexo": "NEXOUSDT",
-    "tether": "USDCUSDT",   # stable — price will be ~1
     "usd-coin": "USDCUSDT",
     "dai": "DAIUSDT",
     "optimism": "OPUSDT",
@@ -67,52 +69,114 @@ _CGID_TO_SYMBOL: dict[str, str] = {
 }
 
 
+# USDT es el activo de cotización de todos los pares: vale 1.0 por definición
+# y no existe un par "USDTUSDT" para consultar.
+_QUOTE_ASSET_IDS: frozenset[str] = frozenset({"tether"})
+
+# Código de error de Binance para un símbolo inexistente/deslistado.
+_INVALID_SYMBOL_CODE = -1121
+
+
 class BinanceError(RuntimeError):
     pass
+
+
+def _is_invalid_symbol(resp: httpx.Response) -> bool:
+    if resp.status_code != 400:
+        return False
+    try:
+        return int((resp.json() or {}).get("code")) == _INVALID_SYMBOL_CODE
+    except (ValueError, TypeError, AttributeError):
+        return False
+
+
+def _parse_ticker(item: dict) -> dict | None:
+    try:
+        return {
+            "usd": float(item["lastPrice"]),
+            "usd_24h_change": float(item["priceChangePercent"]),
+        }
+    except (KeyError, ValueError, TypeError):
+        return None
 
 
 async def get_prices(coingecko_ids: list[str]) -> dict[str, dict]:
     """Return {coingecko_id: {usd: float, usd_24h_change: float}} using Binance 24hr ticker.
 
     Coins without a Binance mapping are silently omitted from the result.
+    USDT (tether) se devuelve fijo en 1.0 sin consultar a Binance.
     """
-    id_to_symbol: dict[str, str] = {}
+    out: dict[str, dict] = {}
+    # Varios IDs pueden compartir el mismo par (ej. matic-network y
+    # polygon-ecosystem-token -> POLUSDT): guardamos todos los IDs por símbolo.
+    symbol_to_ids: dict[str, list[str]] = {}
     for cid in coingecko_ids:
         cid_lower = (cid or "").strip().lower()
+        if not cid_lower:
+            continue
+        if cid_lower in _QUOTE_ASSET_IDS:
+            out[cid_lower] = {"usd": 1.0, "usd_24h_change": 0.0}
+            continue
         sym = _CGID_TO_SYMBOL.get(cid_lower)
         if sym:
-            id_to_symbol[cid_lower] = sym
+            ids = symbol_to_ids.setdefault(sym, [])
+            if cid_lower not in ids:
+                ids.append(cid_lower)
 
-    if not id_to_symbol:
-        return {}
+    if not symbol_to_ids:
+        return out
 
     url = f"{_BASE}/api/v3/ticker/24hr"
+    symbols = sorted(symbol_to_ids)
     # Compact JSON (no spaces) is what Binance expects in the symbols param.
-    params = {"symbols": json.dumps(list(id_to_symbol.values()), separators=(",", ":"))}
+    params = {"symbols": json.dumps(symbols, separators=(",", ":"))}
+    items: list[dict] = []
     try:
         async with httpx.AsyncClient(timeout=_TIMEOUT, headers=_headers()) as client:
             r = await client.get(url, params=params)
-        r.raise_for_status()
+            if _is_invalid_symbol(r):
+                # Un solo símbolo inválido (ej. deslistado) hace fallar el
+                # batch entero y Binance no dice cuál. Pedimos de a uno para
+                # no mandar todas las monedas a CoinGecko.
+                log.warning("binance: batch rechazado por símbolo inválido — consultando de a uno")
+                items = await _fetch_tickers_one_by_one(client, url, symbols)
+            else:
+                r.raise_for_status()
+                items = r.json() or []
     except httpx.HTTPStatusError as e:
         body = (e.response.text or "")[:200]
         raise BinanceError(f"ticker failed: HTTP {e.response.status_code} {body}") from e
     except httpx.HTTPError as e:
         raise BinanceError(f"ticker failed: {e}") from e
 
-    symbol_to_id = {v: k for k, v in id_to_symbol.items()}
-    out: dict[str, dict] = {}
-    for item in r.json() or []:
-        sym = item.get("symbol")
-        cid = symbol_to_id.get(sym)
-        if not cid:
+    for item in items:
+        ids = symbol_to_ids.get(item.get("symbol"))
+        if not ids:
             continue
-        try:
-            price = float(item["lastPrice"])
-            change = float(item["priceChangePercent"])
-        except (KeyError, ValueError, TypeError):
+        parsed = _parse_ticker(item)
+        if parsed is None:
             continue
-        out[cid] = {"usd": price, "usd_24h_change": change}
+        for cid in ids:
+            out[cid] = dict(parsed)
     return out
+
+
+async def _fetch_tickers_one_by_one(
+    client: httpx.AsyncClient, url: str, symbols: list[str]
+) -> list[dict]:
+    """Pide el ticker 24h símbolo por símbolo (en paralelo). Los símbolos que
+    Binance rechaza se omiten; los errores de red se propagan."""
+
+    async def fetch(sym: str) -> dict | None:
+        r = await client.get(url, params={"symbol": sym})
+        if r.status_code == 400:
+            log.warning("binance: símbolo inválido %s — se omite", sym)
+            return None
+        r.raise_for_status()
+        return r.json() or None
+
+    results = await asyncio.gather(*[fetch(s) for s in symbols])
+    return [it for it in results if isinstance(it, dict)]
 
 
 async def get_7d_changes(coingecko_ids: list[str]) -> dict[str, float]:
@@ -124,6 +188,8 @@ async def get_7d_changes(coingecko_ids: list[str]) -> dict[str, float]:
     headers = _headers()
 
     async def fetch_one(client: httpx.AsyncClient, cid_lower: str) -> tuple[str, float | None]:
+        if cid_lower in _QUOTE_ASSET_IDS:
+            return cid_lower, 0.0
         symbol = _CGID_TO_SYMBOL.get(cid_lower)
         if not symbol:
             return cid_lower, None
@@ -159,8 +225,17 @@ async def fetch_history_usd(coingecko_id: str, since: date, until: date) -> dict
     """Return {date: close_price_usd} for the given CoinGecko ID using Binance Klines.
 
     Returns empty dict if the coin has no Binance mapping.
+    USDT (tether) devuelve 1.0 para cada día del rango sin consultar a Binance.
     """
-    symbol = _CGID_TO_SYMBOL.get((coingecko_id or "").strip().lower())
+    cid_lower = (coingecko_id or "").strip().lower()
+    if cid_lower in _QUOTE_ASSET_IDS:
+        out_fixed: dict[date, float] = {}
+        cur = since
+        while cur <= until:
+            out_fixed[cur] = 1.0
+            cur += timedelta(days=1)
+        return out_fixed
+    symbol = _CGID_TO_SYMBOL.get(cid_lower)
     if not symbol:
         log.debug("binance: no symbol mapping for coingecko_id=%s", coingecko_id)
         return {}

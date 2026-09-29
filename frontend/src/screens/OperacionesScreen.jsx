@@ -12,7 +12,11 @@ const KINDS = ["COMPRA", "VENTA", "SUSCRIPCION", "RESCATE", "RENTA", "AMORTIZACI
 export default function OperacionesScreen() {
   const currency = useUiStore((s) => s.currency);
   const qc = useQueryClient();
-  const [year] = useState(2026);
+  // Años con operaciones sincronizables: desde 2026 (inicio del tracking) hasta el actual
+  const currentYear = new Date().getFullYear();
+  const years = [];
+  for (let y = currentYear; y >= 2026; y--) years.push(y);
+  const [year, setYear] = useState(currentYear);
   const [kinds, setKinds] = useState([]);
   const [search, setSearch] = useState("");
 
@@ -51,10 +55,13 @@ export default function OperacionesScreen() {
   const tableFooter = useMemo(() => {
     const totalARS = rows.reduce((acc, r) => acc + (r.monto_ars ?? 0), 0);
     const totalUSD = rows.reduce((acc, r) => acc + (r.monto_usd ?? 0), 0);
+    // Operaciones sin MEP histórico no tienen monto en la otra moneda: avisamos en vez de sumarlas como 0
+    const sinArs = rows.filter((r) => r.monto_ars == null).length;
+    const sinUsd = rows.filter((r) => r.monto_usd == null).length;
     return {
       fecha_operada: `${rows.length} op.`,
-      monto_ars: formatARS(totalARS),
-      monto_usd: formatUSD(totalUSD),
+      monto_ars: formatARS(totalARS) + (sinArs ? ` (${sinArs} sin MEP)` : ""),
+      monto_usd: formatUSD(totalUSD) + (sinUsd ? ` (${sinUsd} sin MEP)` : ""),
     };
   }, [rows]);
   const fxSub = "convertido a MEP del día";
@@ -144,7 +151,18 @@ export default function OperacionesScreen() {
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-3">
-        <h1 className="text-xl font-semibold mr-auto">Operaciones {year}</h1>
+        <h1 className="text-xl font-semibold">Operaciones</h1>
+        <select
+          className="input w-auto mr-auto"
+          value={year}
+          onChange={(e) => setYear(Number(e.target.value))}
+        >
+          {years.map((y) => (
+            <option key={y} value={y}>
+              {y}
+            </option>
+          ))}
+        </select>
         <input
           className="input max-w-xs"
           placeholder="Filtrar por símbolo"

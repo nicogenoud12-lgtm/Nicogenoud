@@ -1,6 +1,6 @@
 # Nicogenoud — Investment Dashboard (IOL)
 
-Dashboard personal de inversiones del usuario `nico`. Conecta a **InvertirOnline (IOL)** vía API, traquea el portfolio 2026 (holdings, operaciones, P&L, dividendos), corre en Docker en su CasaOS. Mono-usuario, sin invitaciones.
+Dashboard personal de inversiones del usuario `nico`. Conecta a **InvertirOnline (IOL)** vía API, traquea el portfolio desde 2026 (holdings, operaciones, P&L, dividendos), corre en Docker en su CasaOS. Mono-usuario, sin invitaciones.
 
 ## ⚡ Deploy (lo más importante)
 
@@ -21,9 +21,7 @@ URL: `http://localhost:8085` (en su LAN: `http://10.0.0.69:8085`). Cloudflare Tu
 
 ## 🌿 Branch convention
 
-**Siempre trabajamos en**: `claude/investment-dashboard-iol-aW0Ju`
-
-No crear branches nuevas. No hacer PRs salvo que el usuario lo pida explícitamente. Push directo a esa branch.
+Los cambios se integran a **`main` vía PR** (el CasaOS del usuario hace `git pull` de `main`). Trabajar en la branch que asigne la sesión, abrir PR contra `main` y mergear sólo cuando el usuario lo pida.
 
 ## Stack
 
@@ -57,7 +55,7 @@ Nicogenoud/
 │       ├── seed.py            admin + AppSettings idempotente
 │       ├── jobs/
 │       │   ├── snapshot_job.py        holdings → dolar → PortfolioSnapshot
-│       │   ├── operations_sync.py     /operaciones 2026 → upsert
+│       │   ├── operations_sync.py     /operaciones año en curso → upsert
 │       │   ├── dolar_job.py           dolarapi.com (today only)
 │       │   ├── iol_keepalive.py       refresh proactivo cada 12h
 │       │   └── crypto_snapshot_job.py crypto holdings (Binance)
@@ -74,7 +72,7 @@ Nicogenoud/
 │       │   ├── coingecko.py           crypto fallback
 │       │   └── crypto_service.py
 │       ├── routers/                   auth, iol, portfolio, operations, dolar, settings, snapshots, crypto
-│       └── tests/                     test_classifier.py + test_pnl.py
+│       └── tests/                     test_classifier, test_pnl, test_portfolio, test_flows, test_crypto_*
 └── frontend/src/
     ├── screens/                       Resumen, Tenencias, Operaciones, Analisis, Crypto, Ajustes
     ├── components/charts/             PortfolioLineChart, AssetDonutChart, OperationsBarChart
@@ -105,7 +103,7 @@ Nicogenoud/
 | auth | `POST /auth/login`, `GET /auth/me` |
 | iol | `POST /iol/connect`, `GET /iol/status`, `POST /iol/disconnect`, `POST /iol/refresh` |
 | portfolio | `GET /portfolio/holdings?refresh=`, `GET /portfolio/kpis`, `GET /portfolio/accounts` |
-| operations | `GET /operations?year=2026`, `POST /operations/sync`, `GET /operations/summary?year=2026` |
+| operations | `GET /operations?year=`, `POST /operations/sync?year=`, `GET /operations/summary?year=` (year default = año en curso) |
 | dolar | `GET /dolar/current?source=`, `GET /dolar/history`, **`POST /dolar/backfill?desde=&hasta=`** |
 | settings | `GET /settings`, `PUT /settings` |
 | snapshots | `GET /snapshots`, `POST /snapshots/run-now`, `DELETE /snapshots/{id}` |
@@ -142,7 +140,7 @@ El frontend togglea entre `total_*_ars` y `total_*_usd` según `useUiStore`. Sin
 
 **P&L no realizada** sale de `Holding.ganancia_dinero` (ARS, de IOL). El USD se calcula dividiendo por la cotización MEP **actual** (no histórica) — es una valoración en vivo.
 
-**P&L realizada — NO existe**. El usuario no vende. Removida del backend y frontend (commit `e3fd6d6`).
+**P&L realizada de IOL — NO existe**. El usuario no vende. Removida del backend y frontend (commit `e3fd6d6`). Excepción: las ventas de **crypto** sí registran P&L realizada (pedido explícito, PR #24).
 
 ### IOL keep-alive
 
@@ -150,7 +148,7 @@ Job `iol_keepalive.py` corre cada 12h. Si `refresh_expires_at` está a <7 días,
 
 ### Operations sync flow
 
-1. `IolClient.get_operaciones(estado="terminadas", desde=2026-01-01, hasta=hoy)`
+1. `IolClient.get_operaciones(estado="terminadas", desde=1/1 del año en curso, hasta=hoy)`
 2. Upsert por `iol_numero`. **Importante**: usar `cantidadOperada` antes de `cantidad` (este último es VN nominal para bonos, no cantidad ejecutada). Calcular `monto_neto` desde `montoOperado ± fees`, signo según event_kind.
 3. `_enrich_with_movimientos`: cruza con IOL `/movimientos` para obtener el **neto** post-retención de dividendos/renta (IOL `/operaciones` da el **bruto**).
 4. `backfill_historical_mep`: trae MEP histórico de ArgentinaDatos para todo el año.
@@ -162,15 +160,18 @@ cd backend && python -m pytest app/tests/ -v
 ```
 
 Cubre:
-- `test_classifier.py` (18 tests): normalize_ticker, is_on, classify_asset, classify_event con casos reales (MRCAD, YM34O, AAPL US$, YM39D, etc.)
-- `test_pnl.py` (5 tests): conversión bidireccional, missing FX, nearest-date fallback, AMORTIZACION en bucket renta, by_mes.
+- `test_classifier.py`: normalize_ticker, is_on, classify_asset, classify_event con casos reales (MRCAD, YM34O, AAPL US$, YM39D, AMD/MCD/KO/YPFD en ARS, etc.)
+- `test_pnl.py`: conversión bidireccional, missing FX, nearest-date fallback, AMORTIZACION, by_mes.
+- `test_portfolio.py`: refresh_holdings no borra tenencias si falla un mercado; P&L no realizada por moneda.
+- `test_flows.py`: flujos netos por snapshot (variación diaria de rendimiento).
+- `test_crypto_*.py`: snapshots crypto, backfill, precios Binance, flujos crypto.
 
 **Antes de pushear cambios al classifier o a pnl.py, correr los tests.**
 
 ## 📋 Convenciones / reglas
 
 - **Idioma**: comentarios en código y mensajes UI en español rioplatense (el usuario habla español, sin embargo el código y nombres internos están en inglés cuando son convención del framework — e.g. `event_kind`, `currency_kind`).
-- **Branch**: siempre `claude/investment-dashboard-iol-aW0Ju`. NO crear PRs salvo pedido explícito.
+- **Branch**: la que asigne la sesión; integrar a `main` por PR cuando el usuario lo pida.
 - **Commits**: en inglés, conventional-ish (`feat:`, `fix:`, `refactor:`). Incluir el footer `https://claude.ai/code/...` (lo agrega automáticamente el harness).
 - **No agregar emojis** a código ni commits (sólo si el usuario lo pide).
 - **No crear archivos .md de docs ni README extra** sin pedido explícito. Excepción: `CLAUDE.md` (este archivo) y `DEPLOY.md` (ya existe).
@@ -189,6 +190,11 @@ Cubre:
 | KPIs partidas ARS/USD | `pnl.py` + `portfolio_service.py` con conversión MEP histórica | Antes dropeaba la mitad de las ops al togglear moneda |
 | P&L realizada inútil | Removida totalmente | Usuario no vende |
 | IOL session expira | `iol_keepalive.py` job 12h + password grant fallback | Antes vencía a los 30 días sin actividad |
+| AMD/MCD/KO/JD/NIO/INTC/YPFD/BA.C leídos como USD | `classifier._INTRINSIC_SUFFIX_TICKERS` | La última letra es parte del ticker, no sufijo de moneda. Si aparece un ticker nuevo así, agregarlo al set |
+| Tenencias borradas si IOL falla | `refresh_holdings` sólo borra en mercados que respondieron | Un error transitorio vaciaba un mercado y el snapshot registraba la caída |
+| Fechas un día antes | `utils/format.js` parsea `YYYY-MM-DD` en hora local | `new Date("YYYY-MM-DD")` es UTC → día anterior en UTC-3 |
+| Compras como ganancia en el gráfico | `SnapshotOut.flujo_*` + tooltip de `PortfolioLineChart` | Variación diaria = (valor − anterior − flujo) / anterior. Flujo = compras/suscripciones − ventas/rescates/amortizaciones (renta y dividendos son rendimiento) |
+| Año 2026 fijo | KPIs, sync y endpoints usan el año en curso (`kpi_year`) | Campos KPI renombrados sin `_2026` |
 
 ## 🧪 Verificación end-to-end
 
@@ -205,12 +211,11 @@ Después de cambios significativos, decile al usuario:
 - `FERNET_KEY` — `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`
 - `ADMIN_USERNAME=nico`, `ADMIN_PASSWORD=<set on first boot>`
 - `SCHEDULER_ENABLED=true`
-- `OPERATIONS_YEAR=2026`
 - `BINANCE_API_KEY` / `BINANCE_API_SECRET` (opcional, read-only — para evitar geo-blocking en crypto)
 
 ## 🎯 TL;DR para futuros chats
 
-1. Trabajar en branch `claude/investment-dashboard-iol-aW0Ju`.
+1. Integrar a `main` vía PR (el deploy hace `git pull` de `main`).
 2. Después de pushear, decirle al usuario que corra el comando de deploy + Sincronizar.
 3. No mezclar ARS y USD sin conversión MEP histórica.
 4. No agregar P&L realizada de vuelta.

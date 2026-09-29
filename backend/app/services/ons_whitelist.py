@@ -34,8 +34,6 @@ ON_BASE_TICKERS: set[str] = {
     "PNXJ", "PNXK", "PNXL", "PNXM", "PNXO",
     # Vista Energy
     "VSC1", "VSC5", "VSC9", "VSCT",
-    # Aluar
-    "ALUA",
     # Galicia
     "GA38",
     # Banco Hipotecario

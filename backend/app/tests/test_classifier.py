@@ -1,3 +1,5 @@
+import pytest
+
 from app.services.classifier import classify_asset, classify_event
 from app.services.ons_whitelist import is_on, normalize_ticker
 
@@ -157,3 +159,19 @@ def test_classify_event_caucion_rescate():
 def test_classify_event_caucion_by_descripcion():
     ev, _ = classify_event(tipo=None, descripcion="Caución colocadora ARS", simbolo=None, moneda="Pesos")
     assert ev == "CAUCION"
+
+
+@pytest.mark.parametrize("simbolo", ["AMD", "MCD", "KO", "JD", "NIO", "INTC", "YPFD", "BA.C"])
+def test_classify_event_intrinsic_suffix_is_ars(simbolo):
+    # La última letra es parte del ticker: una compra en pesos no puede quedar como USD
+    _, cur = classify_event(tipo="Compra", simbolo=simbolo, moneda=None)
+    assert cur == "ARS"
+
+
+def test_classify_event_intrinsic_suffix_dividend_usd_marker():
+    _, cur = classify_event(tipo="Pago de dividendos", simbolo="KO US$", moneda=None)
+    assert cur == "USD_MEP"
+
+
+def test_aluar_stock_is_not_on():
+    assert not is_on("ALUA")

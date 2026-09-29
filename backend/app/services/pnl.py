@@ -63,7 +63,10 @@ def operations_summary(db: Session, user_id: int, *, from_date: date, to_date: d
     missing_fx = 0
     by_simbolo: dict[str, dict] = defaultdict(
         lambda: {"compras_ars": 0.0, "ventas_ars": 0.0,
-                 "compras_usd": 0.0, "ventas_usd": 0.0, "n": 0}
+                 "compras_usd": 0.0, "ventas_usd": 0.0,
+                 "renta_ars": 0.0, "renta_usd": 0.0,
+                 "amortizaciones_ars": 0.0, "amortizaciones_usd": 0.0,
+                 "dividendos_ars": 0.0, "dividendos_usd": 0.0, "n": 0}
     )
     by_mes: dict[int, dict] = defaultdict(
         lambda: {"compras_ars": 0.0, "ventas_ars": 0.0,
@@ -110,12 +113,18 @@ def operations_summary(db: Session, user_id: int, *, from_date: date, to_date: d
             by_mes[mes]["ventas_ars"] += ars
             by_mes[mes]["ventas_usd"] += usd
         elif o.event_kind == "RENTA":
+            by_simbolo[sym]["renta_ars"] += ars
+            by_simbolo[sym]["renta_usd"] += usd
             by_mes[mes]["renta_ars"] += ars
             by_mes[mes]["renta_usd"] += usd
         elif o.event_kind == "AMORTIZACION":
+            by_simbolo[sym]["amortizaciones_ars"] += ars
+            by_simbolo[sym]["amortizaciones_usd"] += usd
             by_mes[mes]["amortizaciones_ars"] += ars
             by_mes[mes]["amortizaciones_usd"] += usd
         elif o.event_kind == "DIVIDENDO":
+            by_simbolo[sym]["dividendos_ars"] += ars
+            by_simbolo[sym]["dividendos_usd"] += usd
             by_mes[mes]["dividendos_ars"] += ars
             by_mes[mes]["dividendos_usd"] += usd
 
@@ -139,3 +148,48 @@ def operations_summary(db: Session, user_id: int, *, from_date: date, to_date: d
         "by_simbolo": by_simbolo_list,
         "by_mes": by_mes_list,
     }
+
+
+# Signo de cada evento como flujo de plata hacia (+) o desde (−) las tenencias.
+# Renta y dividendos NO son flujo: son rendimiento del activo (la baja de precio
+# ex-cupón ya es parte de la variación). La amortización sí, porque devuelve
+# capital y reduce el nominal en cartera.
+_FLOW_SIGN = {
+    "COMPRA": 1, "SUSCRIPCION": 1,
+    "VENTA": -1, "RESCATE": -1, "AMORTIZACION": -1,
+}
+
+
+def net_flows(db: Session, user_id: int, *, from_date: date, to_date: date) -> list[dict]:
+    """Aportes (+) y retiros (−) de las tenencias por operación, en ARS y USD al MEP del día."""
+    ops = (
+        db.query(Operation)
+        .filter(
+            Operation.user_id == user_id,
+            Operation.fecha_operada >= from_date,
+            Operation.fecha_operada <= to_date,
+            Operation.event_kind.in_(list(_FLOW_SIGN)),
+        )
+        .all()
+    )
+    mep = build_mep_lookup(db, from_date, to_date)
+    sorted_dates = sorted(mep.keys())
+    out = []
+    for o in ops:
+        amount = abs(_f(o.monto_neto) if o.monto_neto is not None else _f(o.monto_operado))
+        sign = _FLOW_SIGN[o.event_kind]
+        is_usd = o.currency_kind in ("USD_MEP", "USD_CABLE")
+        rate = fx_for_date(mep, sorted_dates, o.fecha_operada)
+        if rate and rate > 0:
+            usd, ars = (amount, amount * rate) if is_usd else (amount / rate, amount)
+        else:
+            ars = 0.0 if is_usd else amount
+            usd = amount if is_usd else 0.0
+        out.append({
+            "fecha": o.fecha_operada,
+            "simbolo": o.simbolo,
+            "descripcion": o.descripcion,
+            "ars": sign * ars,
+            "usd": sign * usd,
+        })
+    return out

@@ -16,12 +16,13 @@ router = APIRouter(prefix="/operations", tags=["operations"])
 
 @router.get("", response_model=list[OperationOut])
 def list_operations(
-    year: int = Query(default=2026),
+    year: int | None = Query(default=None),
     event_kind: str | None = None,
     simbolo: str | None = None,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    year = year or date.today().year
     desde = date(year, 1, 1)
     hasta = date(year, 12, 31)
     q = db.query(Operation).filter(
@@ -67,10 +68,11 @@ def list_operations(
 
 @router.post("/sync")
 async def sync(
-    year: int = Query(default=2026),
+    year: int | None = Query(default=None),
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    year = year or date.today().year
     try:
         n = await operations_service.sync_operations(db, user.id, year=year)
     except IolNotConnectedError:
@@ -84,10 +86,11 @@ async def sync(
 def summary(
     from_date: date | None = Query(default=None),
     to_date: date | None = Query(default=None),
-    year: int = Query(default=2026),
+    year: int | None = Query(default=None),
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    year = year or date.today().year
     if from_date is None:
         from_date = date(year, 1, 1)
     if to_date is None:

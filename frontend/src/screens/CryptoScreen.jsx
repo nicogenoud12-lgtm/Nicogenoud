@@ -543,7 +543,7 @@ export default function CryptoScreen() {
           className="btn-secondary text-xs"
           onClick={() => backfillM.mutate()}
           disabled={backfillM.isPending}
-          title="Recalcula la evolución diaria desde el 1° de enero usando precios históricos de CoinGecko y tus tenencias actuales."
+          title="Completa los días sin snapshot desde el 1° de enero con precios históricos. Reconstruye las cantidades sumando lo vendido después de cada día. No pisa los días ya guardados."
         >
           {backfillM.isPending ? "Recalculando…" : "↻ Recalcular evolución"}
         </button>
@@ -558,7 +558,13 @@ export default function CryptoScreen() {
       </div>
       {backfillM.isSuccess && backfillM.data && (
         <div className="card p-3 text-sm">
-          Evolución recalculada: {backfillM.data.days} días desde {backfillM.data.since}
+          Evolución completada: {backfillM.data.days} días nuevos desde {backfillM.data.since}
+          {backfillM.data.skipped_existing > 0 && (
+            <> · {backfillM.data.skipped_existing} ya existían (no se tocaron)</>
+          )}
+          {backfillM.data.skipped_incomplete > 0 && (
+            <> · {backfillM.data.skipped_incomplete} sin precio completo</>
+          )}
           {backfillM.data.failed_symbols?.length > 0 && (
             <> · Sin historial: {backfillM.data.failed_symbols.join(", ")}</>
           )}
@@ -1024,13 +1030,16 @@ function SalesHistory({ sales, loading, currency, fmt, arsRate, onDelete, deleti
   const items = sales?.items || [];
   if (items.length === 0) return null;
 
-  const conv = (usd) =>
+  // Cada venta se pasa a ARS con la cotización del día de esa venta; la
+  // actual sólo se usa si la venta no tiene una guardada.
+  const conv = (usd, rate) =>
     usd == null
       ? null
       : currency === "USD"
         ? usd
-        : usd * (arsRate || 0);
-  const totalPnl = conv(sales.total_pnl_usd);
+        : usd * (rate || arsRate || 0);
+  const totalPnl =
+    currency === "USD" ? sales.total_pnl_usd : sales.total_pnl_ars;
 
   return (
     <div className="card p-4 space-y-3">
@@ -1040,7 +1049,7 @@ function SalesHistory({ sales, loading, currency, fmt, arsRate, onDelete, deleti
           <span className="text-textMuted mr-2">P&L realizado:</span>
           <span
             className={`font-medium tabular-nums ${
-              (sales.total_pnl_usd || 0) >= 0 ? "text-success" : "text-danger"
+              (totalPnl || 0) >= 0 ? "text-success" : "text-danger"
             }`}
           >
             {fmt(totalPnl || 0)}
@@ -1067,13 +1076,10 @@ function SalesHistory({ sales, loading, currency, fmt, arsRate, onDelete, deleti
           </thead>
           <tbody>
             {items.map((s) => {
-              const proceeds = conv(s.proceeds_usd);
-              const cost = conv(s.cost_total_usd);
-              const pnl = conv(s.pnl_usd);
-              const price =
-                currency === "USD"
-                  ? s.price_usd
-                  : s.price_usd * (arsRate || 0);
+              const proceeds = conv(s.proceeds_usd, s.dolar_rate);
+              const cost = conv(s.cost_total_usd, s.dolar_rate);
+              const pnl = conv(s.pnl_usd, s.dolar_rate);
+              const price = conv(s.price_usd, s.dolar_rate);
               return (
                 <tr key={s.id} className="border-t border-border hover:bg-surfaceAlt/50">
                   <td className="px-3 py-2 text-textMuted whitespace-nowrap">

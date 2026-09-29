@@ -3,7 +3,7 @@ import { api } from "./client";
 export const listOperations = (params = {}) =>
   api.get("/operations", { params }).then((r) => r.data);
 
-export const syncOperations = (year = 2026) =>
+export const syncOperations = (year) =>
   api.post("/operations/sync", null, { params: { year } }).then((r) => r.data);
 
 export const operationsSummary = ({ fromDate, toDate } = {}) =>
