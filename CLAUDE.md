@@ -175,6 +175,7 @@ Estética profesional y minimalista. Antes de tocar UI, respetar:
 - **Clases**: `.card` + `.card-pad`, `.page-title`, `.section-title`, `.label` (sentence case, nunca `uppercase`), `.btn-primary` (monocromo, uno por vista), `.btn-secondary`, `.btn-ghost`, `.input`, `.segmented`, `.notice` (avisos neutros), `.num` (tabular-nums en columnas).
 - **Componentes**: `PageHeader`, `Card`, `KpiCard` (`hero` = un solo número destacado por vista), `Delta` (variación con signo explícito), `DataTable`.
 - **Gráficos** (`components/charts/chartTheme.js`): paleta categórica validada para daltonismo; el color sigue a la entidad (`colorFor`), nunca al ranking; más de 7 porciones → "Otros". Líneas de 2px, grilla hairline sólida, barras finas con punta redondeada. Los charts renderizan su propio card.
+- **Evolución** (`PortfolioLineChart`): vista "Valor" con marcas en días con compras (punto lleno) o ventas/amortizaciones (punto hueco), y vista "Rendimiento" = TWR acumulado del período, que descuenta los flujos (`utils/performance.js`). La vista elegida se guarda en `uiStore.evoMode`.
 - **Sin emojis** en la UI (íconos SVG inline con `stroke="currentColor"`).
 
 ## 📋 Convenciones / reglas
