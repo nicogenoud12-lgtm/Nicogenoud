@@ -12,6 +12,10 @@ from .classifier import classify_asset, classify_event
 from .dolar_service import backfill_historical_mep
 from .iol_client import IolClient
 
+# Comisión + derechos + IVA en IOL rondan el 1%: un `monto` más de 3% arriba de
+# montoOperado no es "con comisiones", es otra unidad.
+MAX_FEE_FACTOR = 1.03
+
 _ENRICHABLE_KINDS = ("DIVIDENDO", "RENTA", "AMORTIZACION", "COMPRA", "VENTA", "SUSCRIPCION", "RESCATE")
 
 log = logging.getLogger(__name__)
@@ -126,8 +130,13 @@ async def sync_operations(
         if event_kind in ("COMPRA", "SUSCRIPCION"):
             # IOL no envía comisión en /operaciones. Para COMPRAs el campo `monto`
             # incluye las fees (total debitado), mientras que montoOperado es el valor bruto.
-            # Usamos monto cuando es mayor (total con fees), si no usamos montoOperado.
-            total_pagado = monto_raw if (monto_raw and monto_operado and monto_raw > monto_operado) else gross
+            # Sólo usamos monto si la diferencia es del orden de las comisiones: en bonos
+            # `monto` puede venir calculado sobre valor nominal (≈100× el real) y eso
+            # inflaba las compras y los flujos del gráfico.
+            fees_plausible = (
+                monto_raw and monto_operado and monto_operado < monto_raw <= monto_operado * MAX_FEE_FACTOR
+            )
+            total_pagado = monto_raw if fees_plausible else gross
             op.monto_neto = -total_pagado
         elif event_kind in ("VENTA", "RESCATE"):
             # Para VENTAs no hay forma de obtener la comisión sin movimientos.
