@@ -46,6 +46,9 @@ async def run(source: str = "scheduler", on_date: date | None = None) -> dict | 
             dolar_source=dolar_source,
             source=source,
         )
+        if snap is None:
+            log.warning("snapshot: cartera sin valuación, no se guardó (user=%s)", user.id)
+            return None
         log.info("snapshot ok user=%s date=%s ars=%s usd=%s", user.id, snap.date, snap.total_ars, snap.total_usd)
         return {
             "id": snap.id,

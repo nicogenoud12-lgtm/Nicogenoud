@@ -22,7 +22,10 @@ export default function PortfolioLineChart({ data, selectedClass, period, onPeri
   const flowKey = currency === "USD" ? "usd" : "ars";
 
   const series = useMemo(() => {
-    return (data || []).map((d) => {
+    // Un total en 0 nunca es real (snapshot guardado cuando falló IOL): se descarta
+    // para que no hunda la escala. En el filtro por clase el 0 sí es válido (no había de esa clase).
+    const valid = (data || []).filter((d) => Number(d[dataKey]) > 0);
+    return valid.map((d) => {
       // flujo = plata que entró (+) o salió (−) desde el punto anterior (compras, ventas, amortizaciones)
       if (selectedClass && Array.isArray(d.breakdown_json) && d.breakdown_json.length > 0) {
         const filtered = d.breakdown_json.filter((h) => h.clase === selectedClass);
@@ -43,7 +46,7 @@ export default function PortfolioLineChart({ data, selectedClass, period, onPeri
         flujo_usd: Number(d.flujo_usd || 0),
       };
     });
-  }, [data, selectedClass]);
+  }, [data, selectedClass, dataKey]);
 
   const byDate = useMemo(() => {
     const m = new Map();

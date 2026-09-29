@@ -99,6 +99,19 @@ async def refresh_holdings(db: Session, user_id: int) -> list[Holding]:
                 # previas de ese mercado en vez de borrarlas.
                 log.warning("portafolio fetch failed pais=%s: %s", pais, e)
 
+        # Un portafolio vacío en un mercado donde teníamos tenencias suele ser una
+        # respuesta anómala de IOL (mantenimiento, cierre): lo tratamos como falla y
+        # conservamos lo que había, en vez de vaciar la cartera y guardar un snapshot en 0.
+        # Contra: si algún día se vende todo un mercado, se limpia en la próxima respuesta con datos.
+        for pais in list(pais_data):
+            if not _iter_titulos(pais_data[pais]) and (
+                db.query(Holding.id)
+                .filter(Holding.user_id == user_id, Holding.mercado == pais)
+                .first()
+            ):
+                log.warning("portafolio vacío pais=%s con tenencias previas — se ignora", pais)
+                del pais_data[pais]
+
         # MEP rate for ARS→USD valuation
         today = date.today()
         try:
@@ -106,6 +119,9 @@ async def refresh_holdings(db: Session, user_id: int) -> list[Holding]:
             mep_rate = _f(mep.promedio)
         except Exception:
             mep_rate = 0.0
+        if not mep_rate:
+            # Sin cotización del día: usamos la última guardada para no valuar todo en USD 0
+            mep_rate = dolar_service.latest_promedio(db, "MEP") or 0.0
 
         keep_keys: set[tuple[str, str]] = set()
         rows: list[Holding] = []
@@ -397,13 +413,22 @@ def save_snapshot(
     dolar_rate: float,
     dolar_source: str,
     source: str = "scheduler",
-) -> PortfolioSnapshot:
+) -> PortfolioSnapshot | None:
     target = on_date or date.today()
     holdings = db.query(Holding).filter(
         Holding.user_id == user_id, Holding.clase != "Caucion"
     ).all()
     total_ars = sum(_f(h.valuacion_ars) for h in holdings)
     total_usd = sum(_f(h.valuacion_usd) for h in holdings)
+    # Una cartera en 0 es siempre un error de datos (IOL no respondió bien), no un valor real:
+    # guardarla hundía el gráfico de evolución. Se conserva el snapshot anterior del día si existe.
+    if not holdings or total_ars <= 0:
+        log.warning("save_snapshot: cartera sin valuación (%d tenencias) — no se guarda", len(holdings))
+        return None
+    if not dolar_rate:
+        dolar_rate = dolar_service.latest_promedio(db, dolar_source) or 0.0
+    if total_usd <= 0 and dolar_rate:
+        total_usd = total_ars / dolar_rate
     breakdown = [
         {
             "simbolo": h.simbolo,

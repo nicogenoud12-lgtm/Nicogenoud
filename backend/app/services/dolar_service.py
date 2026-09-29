@@ -152,6 +152,17 @@ async def backfill_historical_mep(db: Session, desde: date, hasta: date) -> int:
     return inserted
 
 
+def latest_promedio(db: Session, source: str = "MEP") -> Optional[float]:
+    """Última cotización guardada de `source` (fallback cuando falla la del día)."""
+    row = (
+        db.query(DolarQuote)
+        .filter(DolarQuote.source == source, DolarQuote.promedio > 0)
+        .order_by(DolarQuote.date.desc())
+        .first()
+    )
+    return float(row.promedio) if row else None
+
+
 def build_mep_lookup(db: Session, desde: date, hasta: date) -> dict[date, float]:
     """Return {date → promedio} for MEP rates covering desde-30d to hasta+30d.
 
