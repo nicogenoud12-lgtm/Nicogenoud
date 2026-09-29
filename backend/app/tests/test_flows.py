@@ -77,12 +77,17 @@ def test_snapshot_flows_assigned_to_window_and_class(db, user):
     assert (11_600_000 - 10_000_000 - out[1].flujo_ars) == pytest.approx(250_000)
 
 
-def test_snapshot_without_base_has_no_flows(db, user):
-    rows = [_snap(db, user, date(2026, 9, 1), 10_000_000)]
-    _op(db, user, "1", date(2026, 9, 1), "COMPRA", -1_500_000)
+def test_snapshot_without_base_only_first_point_has_no_flows(db, user):
+    rows = [_snap(db, user, date(2026, 9, 1), 10_000_000),
+            _snap(db, user, date(2026, 9, 2), 11_500_000)]
+    _op(db, user, "1", date(2026, 9, 1), "COMPRA", -700_000)
+    _op(db, user, "2", date(2026, 9, 2), "COMPRA", -1_500_000)
     db.commit()
 
-    assert _with_flows(db, user.id, rows, None)[0].flujo_ars == 0
+    out = _with_flows(db, user.id, rows, None)
+
+    assert out[0].flujo_ars == 0
+    assert out[1].flujo_ars == pytest.approx(1_500_000)
 
 
 def test_summary_by_simbolo_includes_income(db, user):

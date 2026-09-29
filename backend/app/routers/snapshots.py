@@ -41,9 +41,9 @@ def list_snapshots(
 
 def _with_flows(db: Session, user_id: int, rows: list, prev_date: date | None) -> list[SnapshotOut]:
     """Asigna a cada snapshot los flujos con fecha en (snapshot anterior, snapshot]."""
-    flows = []
-    if prev_date is not None:
-        flows = net_flows(db, user_id, from_date=prev_date + timedelta(days=1), to_date=rows[-1].date)
+    # Sin snapshot base, el primer punto queda sin flujo pero los siguientes sí lo tienen
+    flows_from = (prev_date or rows[0].date) + timedelta(days=1)
+    flows = net_flows(db, user_id, from_date=flows_from, to_date=rows[-1].date)
 
     # Clase de cada símbolo según las tenencias registradas (misma clase que usa el gráfico)
     clase_by_sym: dict[str, str] = {}
