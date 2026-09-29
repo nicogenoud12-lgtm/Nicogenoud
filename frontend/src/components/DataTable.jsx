@@ -35,20 +35,21 @@ export default function DataTable({ columns, rows, emptyText = "Sin datos", foot
 
   return (
     <div className="card overflow-x-auto">
-      <table className="w-full text-sm">
-        <thead className="bg-surfaceAlt text-textMuted text-xs uppercase">
-          <tr>
+      <table className="w-full text-[13px]">
+        <thead>
+          <tr className="border-b border-border">
             {columns.map((c) => (
               <th
                 key={c.key}
                 onClick={() => onHeaderClick(c)}
-                className={`px-3 py-2 text-left font-medium whitespace-nowrap ${
-                  c.sortable ? "cursor-pointer select-none" : ""
+                aria-sort={sort.key === c.key ? (sort.dir === "asc" ? "ascending" : "descending") : undefined}
+                className={`px-4 h-10 text-left text-xs font-medium text-textMuted whitespace-nowrap ${
+                  c.sortable ? "cursor-pointer select-none hover:text-text" : ""
                 } ${c.align === "right" ? "text-right" : ""}`}
               >
                 {c.label}
                 {sort.key === c.key && (
-                  <span className="ml-1">{sort.dir === "asc" ? "↑" : "↓"}</span>
+                  <span className="ml-1 text-text">{sort.dir === "asc" ? "↑" : "↓"}</span>
                 )}
               </th>
             ))}
@@ -57,7 +58,7 @@ export default function DataTable({ columns, rows, emptyText = "Sin datos", foot
         <tbody>
           {sorted.length === 0 ? (
             <tr>
-              <td colSpan={columns.length} className="px-3 py-6 text-center text-textMuted">
+              <td colSpan={columns.length} className="px-4 py-10 text-center text-textMuted">
                 {emptyText}
               </td>
             </tr>
@@ -65,13 +66,13 @@ export default function DataTable({ columns, rows, emptyText = "Sin datos", foot
             sorted.map((r, i) => (
               <tr
                 key={r.id ?? i}
-                className="border-t border-border hover:bg-surfaceAlt/50"
+                className="border-b border-border last:border-b-0 hover:bg-surfaceAlt/60 transition-colors"
               >
                 {columns.map((c) => (
                   <td
                     key={c.key}
-                    className={`px-3 py-2 whitespace-nowrap ${
-                      c.align === "right" ? "text-right tabular-nums" : ""
+                    className={`px-4 h-11 whitespace-nowrap ${
+                      c.align === "right" ? "text-right num" : ""
                     } ${c.className || ""}`}
                   >
                     {c.render ? c.render(r) : r[c.key]}
@@ -83,12 +84,12 @@ export default function DataTable({ columns, rows, emptyText = "Sin datos", foot
         </tbody>
         {footer && (
           <tfoot>
-            <tr className="border-t-2 border-border bg-surfaceAlt font-semibold text-sm">
+            <tr className="border-t border-border font-medium">
               {columns.map((c) => (
                 <td
                   key={c.key}
-                  className={`px-3 py-2 whitespace-nowrap ${
-                    c.align === "right" ? "text-right tabular-nums" : ""
+                  className={`px-4 h-11 whitespace-nowrap ${
+                    c.align === "right" ? "text-right num" : "text-textMuted"
                   }`}
                 >
                   {footer[c.key] ?? ""}

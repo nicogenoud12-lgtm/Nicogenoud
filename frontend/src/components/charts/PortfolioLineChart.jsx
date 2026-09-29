@@ -1,7 +1,7 @@
 import {
+  Area,
+  AreaChart,
   CartesianGrid,
-  Line,
-  LineChart,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -10,7 +10,7 @@ import {
 import { useMemo } from "react";
 import { useUiStore } from "../../store/uiStore";
 import { formatARS, formatDateShort, formatUSD } from "../../utils/format";
-import { useChartTokens } from "./chartTheme";
+import { compactNumber, tooltipStyle, useChartTokens } from "./chartTheme";
 import PeriodFilter from "./PeriodFilter";
 
 export default function PortfolioLineChart({ data, selectedClass, period, onPeriodChange, title, className }) {
@@ -75,26 +75,17 @@ export default function PortfolioLineChart({ data, selectedClass, period, onPeri
       }
     }
     return (
-      <div
-        style={{
-          background: t.tooltipBg,
-          border: `1px solid ${t.tooltipBorder}`,
-          borderRadius: 8,
-          color: t.text,
-          fontSize: 12,
-          padding: "8px 10px",
-        }}
-      >
-        <div style={{ color: t.axis, marginBottom: 2 }}>{formatDateShort(label)}</div>
-        <div style={{ fontWeight: 600 }}>{fmt(value)}</div>
+      <div style={tooltipStyle(t)}>
+        <div style={{ color: t.axis, marginBottom: 4 }}>{formatDateShort(label)}</div>
+        <div style={{ fontWeight: 600, fontSize: 13, fontVariantNumeric: "tabular-nums" }}>{fmt(value)}</div>
         <div style={{ color: t.axis, fontSize: 11, marginTop: 4 }}>
           vs. {vsLabel}:{" "}
           {variation == null ? (
             <span style={{ color: t.axis }}>—</span>
           ) : (
             <span style={{ color: up ? t.success : t.danger, fontWeight: 600 }}>
-              {up ? "+" : ""}
-              {variation.toFixed(2)}%
+              {up ? "+" : "−"}
+              {Math.abs(variation).toFixed(2).replace(".", ",")}%
             </span>
           )}
         </div>
@@ -107,67 +98,78 @@ export default function PortfolioLineChart({ data, selectedClass, period, onPeri
     );
   };
 
-  const compactFmt = (v) => {
-    const sign = v < 0 ? "-" : "";
-    const abs = Math.abs(v);
-    if (abs >= 1_000_000) return `${sign}${(abs / 1_000_000).toFixed(1)}M`;
-    if (abs >= 1_000) return `${sign}${Math.round(abs / 1_000)}k`;
-    return `${sign}${Math.round(abs)}`;
-  };
-
   const yDomain = useMemo(() => {
     const vals = series.map((d) => d[dataKey]).filter((v) => v != null && isFinite(v));
     if (vals.length === 0) return [0, "auto"];
     const min = Math.min(...vals);
     const max = Math.max(...vals);
-    const pad = currency === "USD" ? 150 : 200_000;
-    return [min - pad, max + pad];
-  }, [series, dataKey, currency]);
+    const pad = Math.max((max - min) * 0.15, max * 0.01);
+    return [Math.max(0, min - pad), max + pad];
+  }, [series, dataKey]);
+
+  const gradientId = `evo-fill-${t.mode}`;
 
   return (
-    <div className={`card p-4 ${className || "h-80"}`}>
-      <div className="flex items-center justify-between mb-2">
-        <div>
-          <div className="label">
+    <section className={`card card-pad flex flex-col ${className || "h-[22rem]"}`}>
+      <div className="flex flex-wrap items-start justify-between gap-3 mb-4">
+        <div className="min-w-0">
+          <h2 className="section-title">
             {title || "Evolución de cartera"}
-            {selectedClass && (
-              <span className="ml-2 normal-case font-normal text-accent">
-                · {selectedClass}
-              </span>
-            )}
-          </div>
-          <div className="text-xs text-textMuted">{currency}</div>
+            {selectedClass && <span className="ml-1.5 font-normal text-textMuted">· {selectedClass}</span>}
+          </h2>
+          <div className="text-xs text-textMuted mt-0.5">{currency}</div>
         </div>
         {onPeriodChange && <PeriodFilter value={period} onChange={onPeriodChange} />}
       </div>
-      <ResponsiveContainer width="100%" height="85%">
-        <LineChart data={series} margin={{ top: 8, right: 12, left: 4, bottom: 0 }}>
-          <CartesianGrid stroke={t.grid} strokeDasharray="3 3" vertical={false} />
-          <XAxis
-            dataKey="date"
-            tickFormatter={formatDateShort}
-            tick={{ fill: t.axis, fontSize: 10 }}
-            stroke={t.grid}
-            minTickGap={24}
-          />
-          <YAxis
-            tickFormatter={compactFmt}
-            tick={{ fill: t.axis, fontSize: 10 }}
-            stroke={t.grid}
-            width={44}
-            domain={yDomain}
-          />
-          <Tooltip wrapperStyle={{ zIndex: 50 }} content={renderTooltip} />
-          <Line
-            type="monotone"
-            dataKey={dataKey}
-            stroke={t.accent}
-            strokeWidth={2}
-            dot={false}
-            activeDot={{ r: 4 }}
-          />
-        </LineChart>
-      </ResponsiveContainer>
-    </div>
+      <div className="flex-1 min-h-0">
+        {series.length === 0 ? (
+          <div className="h-full grid place-items-center text-sm text-textMuted">Sin snapshots en el período.</div>
+        ) : (
+          <ResponsiveContainer width="100%" height="100%">
+            <AreaChart data={series} margin={{ top: 4, right: 4, left: 0, bottom: 0 }}>
+              <defs>
+                <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor={t.accent} stopOpacity={0.14} />
+                  <stop offset="100%" stopColor={t.accent} stopOpacity={0} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid stroke={t.grid} vertical={false} />
+              <XAxis
+                dataKey="date"
+                tickFormatter={formatDateShort}
+                tick={{ fill: t.axis, fontSize: 11 }}
+                axisLine={{ stroke: t.baseline }}
+                tickLine={false}
+                minTickGap={32}
+                tickMargin={8}
+              />
+              <YAxis
+                tickFormatter={compactNumber}
+                tick={{ fill: t.axis, fontSize: 11 }}
+                axisLine={false}
+                tickLine={false}
+                width={44}
+                domain={yDomain}
+              />
+              <Tooltip
+                wrapperStyle={{ zIndex: 50, outline: "none" }}
+                content={renderTooltip}
+                cursor={{ stroke: t.baseline, strokeWidth: 1 }}
+              />
+              <Area
+                type="monotone"
+                dataKey={dataKey}
+                stroke={t.accent}
+                strokeWidth={2}
+                fill={`url(#${gradientId})`}
+                dot={false}
+                activeDot={{ r: 4, fill: t.accent, stroke: t.surface, strokeWidth: 2 }}
+                isAnimationActive={false}
+              />
+            </AreaChart>
+          </ResponsiveContainer>
+        )}
+      </div>
+    </section>
   );
 }

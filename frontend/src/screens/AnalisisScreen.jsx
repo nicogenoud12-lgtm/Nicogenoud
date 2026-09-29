@@ -4,11 +4,15 @@ import { getHoldings, getKpis } from "../api/portfolio";
 import { operationsSummary } from "../api/operations";
 import { listSnapshots } from "../api/snapshots";
 import { getCryptoReport, listCryptoSnapshots } from "../api/crypto";
+import Card from "../components/Card.jsx";
+import Delta from "../components/Delta.jsx";
+import KpiCard from "../components/KpiCard.jsx";
 import LoadingSpinner from "../components/LoadingSpinner.jsx";
+import PageHeader from "../components/PageHeader.jsx";
 import AssetDonutChart from "../components/charts/AssetDonutChart.jsx";
 import OperationsBarChart from "../components/charts/OperationsBarChart.jsx";
 import PortfolioLineChart from "../components/charts/PortfolioLineChart.jsx";
-import { formatARS, formatPct, formatUSD } from "../utils/format";
+import { formatARS, formatUSD } from "../utils/format";
 import { useUiStore } from "../store/uiStore";
 import { periodToDays, periodToDates } from "../utils/periods";
 
@@ -20,11 +24,25 @@ function splitPerformers(list, pct) {
   return { top, worst };
 }
 
-function SectionTitle({ children }) {
+function PerformerList({ items, empty, render }) {
+  if (!items.length) return <div className="text-sm text-textMuted py-1">{empty}</div>;
+  return <ul className="divide-hair -my-2.5">{items.map(render)}</ul>;
+}
+
+function PerformerRow({ id, name, detail, value, pct }) {
   return (
-    <div className="text-xs uppercase tracking-wider text-textMuted font-semibold pt-2 pb-1 border-b border-border">
-      {children}
-    </div>
+    <li key={id} className="flex items-center justify-between gap-3 py-2.5">
+      <div className="min-w-0">
+        <div className="text-sm font-medium text-text truncate">{name}</div>
+        <div className="text-xs text-textMuted truncate">{detail}</div>
+      </div>
+      <div className="text-right shrink-0">
+        <div className="text-sm text-text num">{value}</div>
+        <div className="text-xs">
+          <Delta value={pct} />
+        </div>
+      </div>
+    </li>
   );
 }
 
@@ -92,168 +110,105 @@ export default function AnalisisScreen() {
 
   if (kpis.isLoading || holdings.isLoading) return <LoadingSpinner />;
 
+  const total = currency === "USD" ? totalUsd : totalArs;
+  const share = (part) => (total > 0 ? `${((part / total) * 100).toFixed(1).replace(".", ",")}% del total` : "—");
+  const iolShown = currency === "USD" ? iolTotalUsd : iolTotalArs;
+  const cryptoShown = currency === "USD" ? cryptoTotalUsd : cryptoTotalArs;
+
+  const holdingRow = (h) => (
+    <PerformerRow
+      key={h.id}
+      id={h.id}
+      name={h.simbolo}
+      detail={h.clase}
+      value={fmt(currency === "USD" ? h.valuacion_usd : h.valuacion_ars)}
+      pct={Number(h.ganancia_porcentaje)}
+    />
+  );
+  const cryptoRow = (i) => (
+    <PerformerRow
+      key={i.id}
+      id={i.id}
+      name={i.symbol}
+      detail={i.name || i.coingecko_id || "—"}
+      value={fmt(currency === "USD" ? i.value_usd : i.value_ars)}
+      pct={Number(i.pnl_pct)}
+    />
+  );
+
   return (
-    <div className="space-y-6">
-      <h1 className="text-xl font-semibold">Análisis</h1>
+    <div>
+      <PageHeader title="Resumen" subtitle="Patrimonio consolidado IOL + crypto" />
 
-      {/* ── TOTALES COMBINADOS ────────────────────────────────────── */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        <div className="card p-4">
-          <div className="label mb-1">IOL</div>
-          <div className="text-xl font-semibold tabular-nums">
-            {currency === "USD" ? formatUSD(iolTotalUsd) : formatARS(iolTotalArs)}
+      <div className="space-y-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="sm:col-span-2">
+            <KpiCard hero label="Patrimonio total" value={fmt(total)} sub={currency} />
           </div>
+          <KpiCard label="IOL" value={fmt(iolShown)} sub={share(iolShown)} />
+          <KpiCard label="Crypto" value={fmt(cryptoShown)} sub={share(cryptoShown)} />
         </div>
-        <div className="card p-4">
-          <div className="label mb-1">Crypto</div>
-          <div className="text-xl font-semibold tabular-nums">
-            {currency === "USD" ? formatUSD(cryptoTotalUsd) : formatARS(cryptoTotalArs)}
-          </div>
-        </div>
-        <div className="card p-4 border-accent/30">
-          <div className="label mb-1">Cartera total</div>
-          <div className="text-xl font-semibold tabular-nums text-accent">
-            {currency === "USD" ? formatUSD(totalUsd) : formatARS(totalArs)}
-          </div>
-        </div>
-      </div>
 
-      {/* ── DISTRIBUCIÓN ─────────────────────────────────────────── */}
-      <SectionTitle>Distribución</SectionTitle>
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <AssetDonutChart
-          data={kpis.data?.distribucion_por_clase || []}
-          selectedClass={selectedClass}
-          onSelect={setSelectedClass}
-          title="Por clase (IOL)"
-        />
-        {cryptoDist.length > 0 ? (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 items-stretch">
+          <div className="lg:col-span-2">
+            <PortfolioLineChart
+              data={snaps.data || []}
+              selectedClass={selectedClass}
+              period={snapPeriod}
+              onPeriodChange={setSnapPeriod}
+              title="Evolución IOL"
+              className="h-full min-h-[22rem]"
+            />
+          </div>
           <AssetDonutChart
-            data={cryptoDist}
-            title="Por moneda (Crypto)"
+            data={kpis.data?.distribucion_por_clase || []}
+            selectedClass={selectedClass}
+            onSelect={setSelectedClass}
+            title="Distribución IOL"
           />
-        ) : (
-          <div className="card p-4 flex items-center justify-center text-sm text-textMuted">
-            Sin datos de crypto con precio en vivo.
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 items-stretch">
+          <div className="lg:col-span-2">
+            <PortfolioLineChart
+              data={cryptoSn.data || []}
+              period={cryptoSnapPeriod}
+              onPeriodChange={setCryptoSnapPeriod}
+              title="Evolución crypto"
+              className="h-full min-h-[22rem]"
+            />
           </div>
-        )}
-      </div>
-
-      {/* ── OPERACIONES IOL ───────────────────────────────────────── */}
-      <SectionTitle>Operaciones IOL</SectionTitle>
-      <OperationsBarChart
-        data={opsByBucket}
-        title="Cobrado por símbolo (renta + dividendos + amortizaciones)"
-        valueLabel="Cobrado"
-        period={opsPeriod}
-        onPeriodChange={setOpsPeriod}
-      />
-
-      {/* ── EVOLUCIÓN ────────────────────────────────────────────── */}
-      <SectionTitle>Evolución IOL</SectionTitle>
-      <PortfolioLineChart
-        data={snaps.data || []}
-        selectedClass={selectedClass}
-        period={snapPeriod}
-        onPeriodChange={setSnapPeriod}
-      />
-
-      <SectionTitle>Evolución Crypto</SectionTitle>
-      <PortfolioLineChart
-        data={cryptoSn.data || []}
-        period={cryptoSnapPeriod}
-        onPeriodChange={setCryptoSnapPeriod}
-        title="Evolución Crypto"
-      />
-
-      {/* ── PERFORMERS ───────────────────────────────────────────── */}
-      <SectionTitle>Performers IOL</SectionTitle>
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <div className="card p-4">
-          <div className="label mb-3">Top performers</div>
-          {performers.top.length === 0 && <div className="text-sm text-textMuted">Ninguna tenencia en ganancia.</div>}
-          <ul className="divide-y divide-border">
-            {performers.top.map((h) => (
-              <li key={h.id} className="py-2 flex justify-between">
-                <div>
-                  <div className="font-medium">{h.simbolo}</div>
-                  <div className="text-xs text-textMuted">{h.clase}</div>
-                </div>
-                <div className="text-right tabular-nums">
-                  <div>{fmt(currency === "USD" ? h.valuacion_usd : h.valuacion_ars)}</div>
-                  <div className="text-xs text-success">+{formatPct(h.ganancia_porcentaje)}</div>
-                </div>
-              </li>
-            ))}
-          </ul>
-        </div>
-        <div className="card p-4">
-          <div className="label mb-3">Worst performers</div>
-          {performers.worst.length === 0 && <div className="text-sm text-textMuted">Ninguna tenencia en pérdida.</div>}
-          <ul className="divide-y divide-border">
-            {performers.worst.map((h) => (
-              <li key={h.id} className="py-2 flex justify-between">
-                <div>
-                  <div className="font-medium">{h.simbolo}</div>
-                  <div className="text-xs text-textMuted">{h.clase}</div>
-                </div>
-                <div className="text-right tabular-nums">
-                  <div>{fmt(currency === "USD" ? h.valuacion_usd : h.valuacion_ars)}</div>
-                  <div className="text-xs text-danger">{formatPct(h.ganancia_porcentaje)}</div>
-                </div>
-              </li>
-            ))}
-          </ul>
-        </div>
-      </div>
-
-      <SectionTitle>Performers Crypto</SectionTitle>
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <div className="card p-4">
-          <div className="label mb-3">Top performers</div>
-          {cryptoPerformers.top.length === 0 ? (
-            <div className="text-sm text-textMuted">Sin datos de P&L crypto.</div>
+          {cryptoDist.length > 0 ? (
+            <AssetDonutChart data={cryptoDist} title="Distribución crypto" />
           ) : (
-            <ul className="divide-y divide-border">
-              {cryptoPerformers.top.map((i) => (
-                <li key={i.id} className="py-2 flex justify-between">
-                  <div>
-                    <div className="font-medium">{i.symbol}</div>
-                    <div className="text-xs text-textMuted">{i.name || i.coingecko_id || "—"}</div>
-                  </div>
-                  <div className="text-right tabular-nums">
-                    <div>{fmt(currency === "USD" ? i.value_usd : i.value_ars)}</div>
-                    <div className="text-xs text-success">
-                      {i.pnl_pct >= 0 ? "+" : ""}{i.pnl_pct.toFixed(2)}%
-                    </div>
-                  </div>
-                </li>
-              ))}
-            </ul>
+            <Card title="Distribución crypto">
+              <div className="text-sm text-textMuted">Sin monedas con precio en vivo.</div>
+            </Card>
           )}
         </div>
-        <div className="card p-4">
-          <div className="label mb-3">Worst performers</div>
-          {cryptoPerformers.worst.length === 0 ? (
-            <div className="text-sm text-textMuted">Sin datos de P&L crypto.</div>
-          ) : (
-            <ul className="divide-y divide-border">
-              {cryptoPerformers.worst.map((i) => (
-                <li key={i.id} className="py-2 flex justify-between">
-                  <div>
-                    <div className="font-medium">{i.symbol}</div>
-                    <div className="text-xs text-textMuted">{i.name || i.coingecko_id || "—"}</div>
-                  </div>
-                  <div className="text-right tabular-nums">
-                    <div>{fmt(currency === "USD" ? i.value_usd : i.value_ars)}</div>
-                    <div className="text-xs text-danger">
-                      {i.pnl_pct >= 0 ? "+" : ""}{i.pnl_pct.toFixed(2)}%
-                    </div>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
+
+        <OperationsBarChart
+          data={opsByBucket}
+          title="Cobrado por símbolo"
+          subtitle={`Renta + dividendos + amortizaciones · ${currency}`}
+          valueLabel="Cobrado"
+          period={opsPeriod}
+          onPeriodChange={setOpsPeriod}
+        />
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <Card title="Mejores tenencias IOL" subtitle="Ganancia sobre costo">
+            <PerformerList items={performers.top} empty="Ninguna tenencia en ganancia." render={holdingRow} />
+          </Card>
+          <Card title="Peores tenencias IOL" subtitle="Pérdida sobre costo">
+            <PerformerList items={performers.worst} empty="Ninguna tenencia en pérdida." render={holdingRow} />
+          </Card>
+          <Card title="Mejores crypto" subtitle="Ganancia sobre costo">
+            <PerformerList items={cryptoPerformers.top} empty="Ninguna moneda en ganancia." render={cryptoRow} />
+          </Card>
+          <Card title="Peores crypto" subtitle="Pérdida sobre costo">
+            <PerformerList items={cryptoPerformers.worst} empty="Ninguna moneda en pérdida." render={cryptoRow} />
+          </Card>
         </div>
       </div>
     </div>
