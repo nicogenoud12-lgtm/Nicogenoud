@@ -12,6 +12,14 @@ import { formatARS, formatPct, formatUSD } from "../utils/format";
 import { useUiStore } from "../store/uiStore";
 import { periodToDays, periodToDates } from "../utils/periods";
 
+// Top: mayores ganancias (> 0). Worst: mayores pérdidas (< 0). Así una lista corta
+// no muestra el mismo activo en ambas, ni un ganador en "Worst".
+function splitPerformers(list, pct) {
+  const top = list.filter((x) => pct(x) > 0).sort((a, b) => pct(b) - pct(a)).slice(0, 5);
+  const worst = list.filter((x) => pct(x) < 0).sort((a, b) => pct(a) - pct(b)).slice(0, 5);
+  return { top, worst };
+}
+
 function SectionTitle({ children }) {
   return (
     <div className="text-xs uppercase tracking-wider text-textMuted font-semibold pt-2 pb-1 border-b border-border">
@@ -38,19 +46,20 @@ export default function AnalisisScreen() {
   const cryptoR  = useQuery({ queryKey: ["crypto-report"], queryFn: getCryptoReport, staleTime: 60_000 });
   const cryptoSn = useQuery({ queryKey: ["crypto-snapshots", cryptoSnapDays], queryFn: () => listCryptoSnapshots(cryptoSnapDays) });
 
-  // --- IOL performers ---
-  const performers = useMemo(() => {
-    const list = (holdings.data || []).slice();
-    list.sort((a, b) => Number(b.ganancia_porcentaje || 0) - Number(a.ganancia_porcentaje || 0));
-    return { top: list.slice(0, 5), worst: list.slice(-5).reverse() };
-  }, [holdings.data]);
+  // --- IOL performers (top sólo positivos, worst sólo negativos, sin solaparse) ---
+  const performers = useMemo(
+    () => splitPerformers(holdings.data || [], (h) => Number(h.ganancia_porcentaje || 0)),
+    [holdings.data]
+  );
 
-  // --- IOL operations bar chart ---
+  // --- IOL: lo cobrado por símbolo (renta + dividendos + amortizaciones) ---
   const opsByBucket = useMemo(() => {
+    const cobrado = (s, cur) =>
+      Number(s[`renta_${cur}`] || 0) + Number(s[`dividendos_${cur}`] || 0) + Number(s[`amortizaciones_${cur}`] || 0);
     return (sum.data?.by_simbolo || []).map((s) => ({
       simbolo: s.simbolo,
-      pnl_ars: Number(s.ventas_ars || 0) - Number(s.compras_ars || 0),
-      pnl_usd: Number(s.ventas_usd || 0) - Number(s.compras_usd || 0),
+      pnl_ars: cobrado(s, "ars"),
+      pnl_usd: cobrado(s, "usd"),
     }));
   }, [sum.data]);
 
@@ -68,13 +77,10 @@ export default function AnalisisScreen() {
   }, [cryptoR.data]);
 
   // --- Crypto performers ---
-  const cryptoPerformers = useMemo(() => {
-    const list = (cryptoR.data?.items || [])
-      .filter((i) => i.pnl_pct != null)
-      .slice()
-      .sort((a, b) => Number(b.pnl_pct || 0) - Number(a.pnl_pct || 0));
-    return { top: list.slice(0, 5), worst: list.slice(-5).reverse() };
-  }, [cryptoR.data]);
+  const cryptoPerformers = useMemo(
+    () => splitPerformers((cryptoR.data?.items || []).filter((i) => i.pnl_pct != null), (i) => Number(i.pnl_pct)),
+    [cryptoR.data]
+  );
 
   // --- Combined totals ---
   const iolTotalArs = kpis.data?.total_ars || 0;
@@ -134,10 +140,11 @@ export default function AnalisisScreen() {
       </div>
 
       {/* ── OPERACIONES IOL ───────────────────────────────────────── */}
-      <SectionTitle>Operaciones IOL 2026</SectionTitle>
+      <SectionTitle>Operaciones IOL</SectionTitle>
       <OperationsBarChart
         data={opsByBucket}
-        title="Resultado neto por símbolo (Ventas − Compras)"
+        title="Cobrado por símbolo (renta + dividendos + amortizaciones)"
+        valueLabel="Cobrado"
         period={opsPeriod}
         onPeriodChange={setOpsPeriod}
       />
@@ -164,6 +171,7 @@ export default function AnalisisScreen() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <div className="card p-4">
           <div className="label mb-3">Top performers</div>
+          {performers.top.length === 0 && <div className="text-sm text-textMuted">Ninguna tenencia en ganancia.</div>}
           <ul className="divide-y divide-border">
             {performers.top.map((h) => (
               <li key={h.id} className="py-2 flex justify-between">
@@ -173,7 +181,7 @@ export default function AnalisisScreen() {
                 </div>
                 <div className="text-right tabular-nums">
                   <div>{fmt(currency === "USD" ? h.valuacion_usd : h.valuacion_ars)}</div>
-                  <div className="text-xs text-success">{formatPct(h.ganancia_porcentaje)}</div>
+                  <div className="text-xs text-success">+{formatPct(h.ganancia_porcentaje)}</div>
                 </div>
               </li>
             ))}
@@ -181,6 +189,7 @@ export default function AnalisisScreen() {
         </div>
         <div className="card p-4">
           <div className="label mb-3">Worst performers</div>
+          {performers.worst.length === 0 && <div className="text-sm text-textMuted">Ninguna tenencia en pérdida.</div>}
           <ul className="divide-y divide-border">
             {performers.worst.map((h) => (
               <li key={h.id} className="py-2 flex justify-between">

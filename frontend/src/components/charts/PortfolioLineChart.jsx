@@ -19,42 +19,61 @@ export default function PortfolioLineChart({ data, selectedClass, period, onPeri
   const dataKey = currency === "USD" ? "total_usd" : "total_ars";
   const fmt = currency === "USD" ? formatUSD : formatARS;
 
+  const flowKey = currency === "USD" ? "usd" : "ars";
+
   const series = useMemo(() => {
     return (data || []).map((d) => {
+      // flujo = plata que entró (+) o salió (−) desde el punto anterior (compras, ventas, amortizaciones)
       if (selectedClass && Array.isArray(d.breakdown_json) && d.breakdown_json.length > 0) {
         const filtered = d.breakdown_json.filter((h) => h.clase === selectedClass);
+        const f = d.flujo_por_clase?.[selectedClass] || {};
         return {
           ...d,
           total_ars: filtered.reduce((s, h) => s + Number(h.valuacion_ars || 0), 0),
           total_usd: filtered.reduce((s, h) => s + Number(h.valuacion_usd || 0), 0),
+          flujo_ars: Number(f.ars || 0),
+          flujo_usd: Number(f.usd || 0),
         };
       }
       return {
         ...d,
         total_ars: Number(d.total_ars || 0),
         total_usd: Number(d.total_usd || 0),
+        flujo_ars: Number(d.flujo_ars || 0),
+        flujo_usd: Number(d.flujo_usd || 0),
       };
     });
   }, [data, selectedClass]);
 
-  // Devuelve el valor del punto inmediatamente anterior (día anterior) al de la fecha dada.
-  const prevValue = useMemo(() => {
-    return (currentDate) => {
-      const idx = series.findIndex((d) => d.date === currentDate);
-      if (idx <= 0) return null;
-      return series[idx - 1][dataKey];
-    };
-  }, [series, dataKey]);
+  const byDate = useMemo(() => {
+    const m = new Map();
+    series.forEach((d, i) => m.set(d.date, i));
+    return m;
+  }, [series]);
 
   const renderTooltip = ({ active, payload, label }) => {
     if (!active || !payload || payload.length === 0) return null;
     const value = payload[0].value;
-    const prev = prevValue(label);
+    const idx = byDate.get(label);
+    const prevPoint = idx > 0 ? series[idx - 1] : null;
+    const prev = prevPoint ? prevPoint[dataKey] : null;
+    const flujo = idx != null ? series[idx][`flujo_${flowKey}`] : 0;
+    // Variación de rendimiento: descuenta aportes/retiros para que una compra no parezca ganancia
     let variation = null;
     if (prev != null && isFinite(prev) && prev !== 0) {
-      variation = ((value - prev) / Math.abs(prev)) * 100;
+      variation = ((value - prev - flujo) / Math.abs(prev)) * 100;
     }
     const up = variation != null && variation >= 0;
+    // Si faltó algún snapshot, aclaramos contra qué fecha se compara
+    let vsLabel = "día anterior";
+    if (prevPoint) {
+      const [y, m, d] = label.split("-").map(Number);
+      const expected = new Date(y, m - 1, d - 1);
+      const [py, pm, pd] = prevPoint.date.split("-").map(Number);
+      if (expected.getTime() !== new Date(py, pm - 1, pd).getTime()) {
+        vsLabel = formatDateShort(prevPoint.date);
+      }
+    }
     return (
       <div
         style={{
@@ -69,7 +88,7 @@ export default function PortfolioLineChart({ data, selectedClass, period, onPeri
         <div style={{ color: t.axis, marginBottom: 2 }}>{formatDateShort(label)}</div>
         <div style={{ fontWeight: 600 }}>{fmt(value)}</div>
         <div style={{ color: t.axis, fontSize: 11, marginTop: 4 }}>
-          vs. día anterior:{" "}
+          vs. {vsLabel}:{" "}
           {variation == null ? (
             <span style={{ color: t.axis }}>—</span>
           ) : (
@@ -79,6 +98,11 @@ export default function PortfolioLineChart({ data, selectedClass, period, onPeri
             </span>
           )}
         </div>
+        {prevPoint && Math.abs(flujo) >= 0.01 && (
+          <div style={{ color: t.axis, fontSize: 11, marginTop: 2 }}>
+            {flujo > 0 ? "Aportes" : "Retiros"} netos: {fmt(Math.abs(flujo))}
+          </div>
+        )}
       </div>
     );
   };

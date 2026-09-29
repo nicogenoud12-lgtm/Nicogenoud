@@ -13,7 +13,7 @@ import { formatARS, formatUSD } from "../../utils/format";
 import { useChartTokens } from "./chartTheme";
 import PeriodFilter from "./PeriodFilter";
 
-export default function OperationsBarChart({ data, title = "Resultado por símbolo", period, onPeriodChange }) {
+export default function OperationsBarChart({ data, title = "Resultado por símbolo", valueLabel = "Resultado", period, onPeriodChange }) {
   const currency = useUiStore((s) => s.currency);
   const t = useChartTokens();
   const fmt = currency === "USD" ? formatUSD : formatARS;
@@ -70,9 +70,9 @@ export default function OperationsBarChart({ data, title = "Resultado por símbo
               color: t.text,
               fontSize: 12,
             }}
-            formatter={(v) => [fmt(v), "Resultado"]}
+            formatter={(v) => [fmt(v), valueLabel]}
           />
-          <Bar dataKey="pnl" name="Resultado" radius={[0, 4, 4, 0]}>
+          <Bar dataKey="pnl" name={valueLabel} radius={[0, 4, 4, 0]}>
             {series.map((s, i) => (
               <Cell key={i} fill={s.pnl >= 0 ? t.success : t.danger} />
             ))}

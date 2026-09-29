@@ -132,15 +132,22 @@ export default function ResumenScreen() {
 
   const k = kpis.data;
   const pnlNoReal = currency === "USD" ? k.pnl_no_realizada_usd : k.pnl_no_realizada_ars;
-  const renta = currency === "USD" ? k.renta_2026_usd : k.renta_2026_ars;
-  const amort = currency === "USD" ? k.amortizaciones_2026_usd : k.amortizaciones_2026_ars;
-  const divs = currency === "USD" ? k.dividendos_2026_usd : k.dividendos_2026_ars;
+  const renta = currency === "USD" ? k.renta_usd : k.renta_ars;
+  const amort = currency === "USD" ? k.amortizaciones_usd : k.amortizaciones_ars;
+  const divs = currency === "USD" ? k.dividendos_usd : k.dividendos_ars;
 
   const allHoldings = holdings.data || [];
 
   const withDaily = allHoldings.filter((h) => efectiveVar(h) !== null);
-  const gainers = [...withDaily].sort((a, b) => efectiveVar(b).value - efectiveVar(a).value).slice(0, 10);
-  const losers = [...withDaily].sort((a, b) => efectiveVar(a).value - efectiveVar(b).value).slice(0, 10);
+  // Filtramos por signo: sin esto "Más bajaron" completaba la lista con activos que subieron
+  const gainers = withDaily
+    .filter((h) => efectiveVar(h).value > 0)
+    .sort((a, b) => efectiveVar(b).value - efectiveVar(a).value)
+    .slice(0, 10);
+  const losers = withDaily
+    .filter((h) => efectiveVar(h).value < 0)
+    .sort((a, b) => efectiveVar(a).value - efectiveVar(b).value)
+    .slice(0, 10);
 
   const allSorted = [...allHoldings].sort((a, b) => Number(b.valuacion_ars) - Number(a.valuacion_ars));
   const displayHoldings = selectedClass
@@ -154,7 +161,7 @@ export default function ResumenScreen() {
         <KpiCard
           label="Valor total"
           value={fmt(currency === "USD" ? k.total_usd : k.total_ars)}
-          sub={`MEP ${k.dolar_source}: ${Number(k.dolar_rate).toFixed(2)}`}
+          sub={`${k.dolar_source}: ${Number(k.dolar_rate).toFixed(2)}`}
         />
         <KpiCard
           label="P&L no realizada"
@@ -162,9 +169,9 @@ export default function ResumenScreen() {
           tone={pnlNoReal >= 0 ? "positive" : "negative"}
           sub="valuación actual − costo"
         />
-        <KpiCard label="Renta 2026" value={fmt(renta)} sub="MEP del día" />
-        <KpiCard label="Amortizaciones 2026" value={fmt(amort)} sub="MEP del día" />
-        <KpiCard label="Dividendos 2026" value={fmt(divs)} sub="MEP del día" />
+        <KpiCard label={`Renta ${k.kpi_year}`} value={fmt(renta)} sub="MEP del día" />
+        <KpiCard label={`Amortizaciones ${k.kpi_year}`} value={fmt(amort)} sub="MEP del día" />
+        <KpiCard label={`Dividendos ${k.kpi_year}`} value={fmt(divs)} sub="MEP del día" />
       </div>
 
       {/* Charts */}

@@ -4,7 +4,7 @@ from __future__ import annotations
 import logging
 from datetime import date
 
-from ..crud import get_first_user, get_setting
+from ..crud import get_first_user
 from ..database import SessionLocal
 from ..models import IolCredential
 from ..services import operations_service
@@ -22,7 +22,8 @@ async def run(year: int | None = None) -> int:
         if cred is None:
             log.info("operations_sync: IOL not connected, skipping")
             return 0
-        target_year = year or int(get_setting(db, "operations_year", "2026") or 2026)
+        # Siempre el año en curso: el setting operations_year quedaba fijo en 2026
+        target_year = year or date.today().year
         n = await operations_service.sync_operations(db, user.id, year=target_year)
         log.info("operations_sync: %s rows touched (year=%s)", n, target_year)
         return n

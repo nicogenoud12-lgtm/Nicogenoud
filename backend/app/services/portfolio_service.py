@@ -234,8 +234,8 @@ def compute_kpis(db: Session, user_id: int, *, dolar_rate: float, dolar_source: 
             pnl_no_realizada_ars += g
             pnl_no_realizada_usd += g / dolar_rate if dolar_rate else 0.0
 
-    # Dividendos / renta del 2026 desde Operations — convertido a ambas monedas via MEP histórico
-    year = 2026
+    # Dividendos / renta del año en curso desde Operations — convertido a ambas monedas via MEP histórico
+    year = date.today().year
     ops = db.query(Operation).filter(
         Operation.user_id == user_id,
         Operation.fecha_operada >= date(year, 1, 1),
@@ -250,7 +250,7 @@ def compute_kpis(db: Session, user_id: int, *, dolar_rate: float, dolar_source: 
     renta_usd = 0.0
     amort_ars = 0.0
     amort_usd = 0.0
-    n_ops_2026 = len(ops)
+    n_ops = len(ops)
 
     for o in ops:
         amount = abs(_f(o.monto_neto) if o.monto_neto is not None else _f(o.monto_operado))
@@ -280,13 +280,14 @@ def compute_kpis(db: Session, user_id: int, *, dolar_rate: float, dolar_source: 
         "dolar_source": dolar_source,
         "pnl_no_realizada_ars": round(pnl_no_realizada_ars, 2),
         "pnl_no_realizada_usd": round(pnl_no_realizada_usd, 2),
-        "dividendos_2026_ars": round(div_ars, 2),
-        "dividendos_2026_usd": round(div_usd, 2),
-        "renta_2026_ars": round(renta_ars, 2),
-        "renta_2026_usd": round(renta_usd, 2),
-        "amortizaciones_2026_ars": round(amort_ars, 2),
-        "amortizaciones_2026_usd": round(amort_usd, 2),
-        "n_operaciones_2026": n_ops_2026,
+        "dividendos_ars": round(div_ars, 2),
+        "dividendos_usd": round(div_usd, 2),
+        "renta_ars": round(renta_ars, 2),
+        "renta_usd": round(renta_usd, 2),
+        "amortizaciones_ars": round(amort_ars, 2),
+        "amortizaciones_usd": round(amort_usd, 2),
+        "n_operaciones": n_ops,
+        "kpi_year": year,
         "distribucion_por_clase": distribucion,
     }
 
