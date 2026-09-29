@@ -51,6 +51,20 @@ _SOBERANO_PREFIXES = (
 )
 
 
+# Tickers cuya última letra (D/C/O) es parte del símbolo y NO un sufijo de moneda.
+# Sin esta lista, AMD se leía como "AM" + D (MEP) y una compra en pesos se
+# multiplicaba por el MEP al convertir a ARS.
+_INTRINSIC_SUFFIX_TICKERS = {
+    # CEDEARs
+    "AMD", "MCD", "KO", "JD", "NIO", "INTC", "BA.C", "HD", "PDD", "GOLD",
+    "CSCO", "MO", "RIO", "ARCO", "DEO", "HMC", "WFC", "SID", "BBD", "TTD",
+    "CRWD", "GILD", "NVO", "AVGO", "TMO", "HSBC", "EC", "SCCO", "NOC", "UMC",
+    "TEO",
+    # Acciones locales
+    "YPFD", "VALO", "AGRO", "CTIO", "CARC", "CADO", "GARO", "AUSO",
+}
+
+
 def _norm(s: Optional[str]) -> str:
     if not s:
         return ""
@@ -117,6 +131,8 @@ def _currency_kind_from(
 ) -> CurrencyKind:
     sym = (simbolo or "").upper().strip()
     _, suffix = normalize_ticker(sym)
+    if sym in _INTRINSIC_SUFFIX_TICKERS:
+        suffix = ""
     if suffix == "D":
         return "USD_MEP"
     if suffix == "C":
