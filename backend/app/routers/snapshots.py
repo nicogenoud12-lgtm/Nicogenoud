@@ -9,6 +9,7 @@ from ..jobs import snapshot_job
 from ..models import Holding, PortfolioSnapshot, User
 from ..schemas import SnapshotOut
 from ..services.classifier import classify_asset
+from ..services.dolar_service import build_mep_lookup, fx_for_date
 from ..services.pnl import net_flows
 
 router = APIRouter(prefix="/snapshots", tags=["snapshots"])
@@ -23,7 +24,12 @@ def list_snapshots(
     since = date.today() - timedelta(days=days)
     rows = (
         db.query(PortfolioSnapshot)
-        .filter(PortfolioSnapshot.user_id == user.id, PortfolioSnapshot.date >= since)
+        .filter(
+            PortfolioSnapshot.user_id == user.id,
+            PortfolioSnapshot.date >= since,
+            # Snapshots en 0 (guardados cuando IOL falló) no son datos reales: se omiten
+            PortfolioSnapshot.total_ars > 0,
+        )
         .order_by(PortfolioSnapshot.date.asc())
         .all()
     )
@@ -32,7 +38,11 @@ def list_snapshots(
     # El primer punto necesita el snapshot anterior (fuera de la ventana) como base
     before = (
         db.query(PortfolioSnapshot.date)
-        .filter(PortfolioSnapshot.user_id == user.id, PortfolioSnapshot.date < rows[0].date)
+        .filter(
+            PortfolioSnapshot.user_id == user.id,
+            PortfolioSnapshot.date < rows[0].date,
+            PortfolioSnapshot.total_ars > 0,
+        )
         .order_by(PortfolioSnapshot.date.desc())
         .first()
     )
@@ -54,9 +64,14 @@ def _with_flows(db: Session, user_id: int, rows: list, prev_date: date | None) -
     for h in db.query(Holding).filter(Holding.user_id == user_id).all():
         clase_by_sym[h.simbolo] = h.clase
 
+    # Snapshots viejos guardados sin cotización tienen USD en 0: se recalculan con el MEP de ese día
+    mep = build_mep_lookup(db, rows[0].date, rows[-1].date)
+    mep_dates = sorted(mep.keys())
+
     out = []
     for r in rows:
         snap = SnapshotOut.model_validate(r)
+        _repair_usd(snap, fx_for_date(mep, mep_dates, r.date))
         if prev_date is not None:
             por_clase: dict[str, dict[str, float]] = {}
             for f in flows:
@@ -79,11 +94,25 @@ def _with_flows(db: Session, user_id: int, rows: list, prev_date: date | None) -
     return out
 
 
+def _repair_usd(snap: SnapshotOut, mep_rate: float | None) -> None:
+    rate = snap.dolar_rate or mep_rate
+    if not rate:
+        return
+    if snap.total_usd <= 0:
+        snap.total_usd = round(snap.total_ars / rate, 2)
+    fixed = []
+    for h in snap.breakdown_json or []:
+        if isinstance(h, dict) and not h.get("valuacion_usd") and h.get("valuacion_ars"):
+            h = {**h, "valuacion_usd": float(h["valuacion_ars"]) / rate}
+        fixed.append(h)
+    snap.breakdown_json = fixed
+
+
 @router.post("/run-now", response_model=SnapshotOut | None)
 async def run_now(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     result = await snapshot_job.run(source="manual")
     if not result:
-        raise HTTPException(status_code=409, detail="No se pudo generar snapshot (IOL no conectado o error)")
+        raise HTTPException(status_code=409, detail="No se pudo generar el snapshot (IOL no conectado, error o cartera sin valuación)")
     row = (
         db.query(PortfolioSnapshot)
         .filter(PortfolioSnapshot.id == result["id"], PortfolioSnapshot.user_id == user.id)
