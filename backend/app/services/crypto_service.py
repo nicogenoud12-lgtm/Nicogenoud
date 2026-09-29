@@ -265,10 +265,12 @@ async def build_report(db: Session, user_id: int) -> dict:
         )
         pnl_pct = (pnl_usd / cost_total * 100) if (pnl_usd is not None and cost_total) else None
 
+        # El costo sólo suma si hay precio: si no, el P&L total cuenta como
+        # pérdida el costo de monedas que no pudimos valuar.
         if value_usd is not None:
             total_value_usd += value_usd
-        if cost_total is not None:
-            total_cost_usd += cost_total
+            if cost_total is not None:
+                total_cost_usd += cost_total
 
         items.append(
             {
