@@ -1,7 +1,7 @@
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from typing import Any, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class LoginRequest(BaseModel):
@@ -74,13 +74,14 @@ class KpisResponse(BaseModel):
     dolar_source: str
     pnl_no_realizada_ars: float
     pnl_no_realizada_usd: float
-    dividendos_2026_ars: float
-    dividendos_2026_usd: float
-    renta_2026_ars: float
-    renta_2026_usd: float
-    amortizaciones_2026_ars: float = 0.0
-    amortizaciones_2026_usd: float = 0.0
-    n_operaciones_2026: int
+    dividendos_ars: float
+    dividendos_usd: float
+    renta_ars: float
+    renta_usd: float
+    amortizaciones_ars: float = 0.0
+    amortizaciones_usd: float = 0.0
+    n_operaciones: int
+    kpi_year: int
     distribucion_por_clase: list[KpiBreakdownItem]
 
 
@@ -153,6 +154,11 @@ class SnapshotOut(BaseModel):
     dolar_source: str
     source: str
     breakdown_json: list = []
+    # Aportes netos (+) / retiros (−) desde el snapshot anterior, para que la
+    # variación diaria mida rendimiento y no plata que entró o salió.
+    flujo_ars: float = 0.0
+    flujo_usd: float = 0.0
+    flujo_por_clase: dict[str, dict[str, float]] = {}
 
     class Config:
         from_attributes = True
@@ -228,6 +234,17 @@ class CryptoReport(BaseModel):
     fetch_error: Optional[str] = None
 
 
+def _as_utc(v: Optional[datetime]) -> Optional[datetime]:
+    """SQLite devuelve los DateTime naive (en UTC, por `func.now()`). Sin zona,
+    el browser los lee como hora local y una venta a las 22:30 ART aparece al
+    día siguiente. Los marcamos como UTC para que salgan con "Z"."""
+    if v is None:
+        return v
+    if v.tzinfo is None:
+        return v.replace(tzinfo=timezone.utc)
+    return v.astimezone(timezone.utc)
+
+
 class CryptoSnapshotOut(BaseModel):
     id: int
     date: date
@@ -236,6 +253,12 @@ class CryptoSnapshotOut(BaseModel):
     total_ars: float
     cost_usd: float
     dolar_rate: float
+    # Plata que entró (+) / salió (-) del portfolio crypto desde el snapshot
+    # anterior de la lista. 0 en el primero; ARS null si no hay cotización.
+    flujo_usd: float = 0.0
+    flujo_ars: Optional[float] = None
+
+    _taken_at_utc = field_validator("taken_at")(_as_utc)
 
     class Config:
         from_attributes = True
@@ -266,6 +289,8 @@ class CryptoSaleOut(BaseModel):
     notas: Optional[str]
     sold_at: datetime
 
+    _sold_at_utc = field_validator("sold_at")(_as_utc)
+
     class Config:
         from_attributes = True
 
@@ -276,5 +301,7 @@ class CryptoSalesReport(BaseModel):
     total_cost_usd: float
     total_pnl_usd: float
     total_pnl_pct: Optional[float]
+    # Suma del P&L de cada venta convertido con la cotización de esa venta.
+    total_pnl_ars: float = 0.0
     ars_rate: float
     dolar_source: str

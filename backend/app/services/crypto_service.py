@@ -174,12 +174,21 @@ def sales_report(db: Session, user_id: int, ars_rate: float, dolar_source: str) 
     total_cost = sum(float(s.cost_total_usd or 0) for s in sales if s.cost_total_usd is not None)
     total_pnl = sum(float(s.pnl_usd or 0) for s in sales if s.pnl_usd is not None)
     total_pnl_pct = (total_pnl / total_cost * 100) if total_cost else None
+    # P&L realizado en ARS: cada venta se convierte con SU cotización del día
+    # de la venta (no la de hoy). Si una venta vieja no tiene cotización
+    # guardada, se usa la actual como último recurso.
+    total_pnl_ars = sum(
+        float(s.pnl_usd) * (float(s.dolar_rate or 0) or (ars_rate or 0.0))
+        for s in sales
+        if s.pnl_usd is not None
+    )
     return {
         "items": sales,
         "total_proceeds_usd": total_proceeds,
         "total_cost_usd": total_cost,
         "total_pnl_usd": total_pnl,
         "total_pnl_pct": total_pnl_pct,
+        "total_pnl_ars": total_pnl_ars,
         "ars_rate": ars_rate or 0.0,
         "dolar_source": dolar_source,
     }
@@ -357,9 +366,31 @@ def upsert_snapshot(
     return row
 
 
+def _report_is_complete(report: dict) -> bool:
+    """True si todas las tenencias con fuente de precio (coingecko_id) tienen
+    precio en este reporte. Las que no tienen ID nunca se valúan, así que no
+    cuentan como faltantes."""
+    return all(
+        it["has_price"] for it in report["items"] if (it.get("coingecko_id") or "").strip()
+    )
+
+
 async def build_report_and_snapshot(db: Session, user_id: int) -> dict:
     report = await build_report(db, user_id)
-    if report["total_value_usd"] > 0:
+    if report["total_value_usd"] > 0 and not _report_is_complete(report):
+        # Falla parcial de precios (ej. Binance/CoinGecko no devolvió una
+        # moneda): el total sale subvaluado. No pisamos el snapshot de hoy
+        # para conservar el último bueno.
+        faltan = [
+            it["symbol"]
+            for it in report["items"]
+            if (it.get("coingecko_id") or "").strip() and not it["has_price"]
+        ]
+        log.warning(
+            "crypto snapshot: sin precio para %s — no se actualiza el snapshot de hoy",
+            ", ".join(faltan),
+        )
+    elif report["total_value_usd"] > 0:
         breakdown = [
             {
                 "symbol": it["symbol"],
@@ -395,6 +426,15 @@ def _nearest_price(history: dict[date, float], target: date) -> Optional[float]:
     return history[max(earlier)]
 
 
+def _sale_local_date(sold_at: datetime) -> date:
+    """Fecha local de una venta. `sold_at` se guarda en UTC (SQLite lo devuelve
+    naive); los snapshots usan `date.today()` en la zona del servidor (TZ del
+    contenedor), así que convertimos a esa misma zona para comparar."""
+    if sold_at.tzinfo is None:
+        sold_at = sold_at.replace(tzinfo=timezone.utc)
+    return sold_at.astimezone().date()
+
+
 async def backfill_history(
     db: Session,
     user_id: int,
@@ -402,60 +442,143 @@ async def backfill_history(
     since: date = DEFAULT_BACKFILL_SINCE,
     until: Optional[date] = None,
 ) -> dict:
-    """Compute daily snapshots from `since` to today using current holdings + historical prices.
+    """Completa snapshots diarios faltantes entre `since` y `until` (hoy por
+    defecto) con precios históricos.
 
-    Assumes the user has held the *current* quantities since `since`. This is
-    a backwards-looking simulation, not a true purchase-history reconstruction.
+    - Nunca pisa un snapshot existente: sólo crea los días que no tienen uno.
+    - Cantidad por día: para cada símbolo, cantidad actual + lo vendido después
+      de ese día (según `crypto_sales`), incluyendo monedas vendidas del todo
+      (sin fila en `crypto_holdings`).
+    - Costo por día: costo actual + costo base (`cost_total_usd`) de las ventas
+      posteriores. Igual que el reporte en vivo, sólo cuenta el costo conocido.
+
+    Aproximación: las compras no se registran con fecha (se fusionan en la
+    tenencia), así que se asume que todo lo comprado ya se tenía desde `since`.
     """
     until = until or date.today()
+    empty = {
+        "days": 0,
+        "since": since.isoformat(),
+        "until": until.isoformat(),
+        "failed_symbols": [],
+        "skipped_existing": 0,
+        "skipped_incomplete": 0,
+    }
     holdings: list[CryptoHolding] = (
         db.query(CryptoHolding).filter(CryptoHolding.user_id == user_id).all()
     )
-    if not holdings:
-        return {"days": 0, "since": since.isoformat(), "until": until.isoformat()}
+    sales: list[CryptoSale] = (
+        db.query(CryptoSale).filter(CryptoSale.user_id == user_id).all()
+    )
+    if not holdings and not sales:
+        return empty
 
     resolved_count = _resolve_missing_ids(db, holdings)
     if resolved_count:
         log.info("backfill: auto-resolved coingecko_id for %d holdings", resolved_count)
 
+    # Posiciones por símbolo: cantidad/costo actuales + ventas (fecha, qty, costo).
+    positions: dict[str, dict] = {}
+
+    def _pos(symbol: str) -> dict:
+        key = (symbol or "").strip().upper()
+        return positions.setdefault(
+            key, {"symbol": key, "cid": None, "qty": 0.0, "cost": 0.0, "sales": []}
+        )
+
+    for h in holdings:
+        p = _pos(h.symbol)
+        p["qty"] += float(h.cantidad or 0)
+        if h.costo_usd_unit is not None:
+            p["cost"] += float(h.costo_usd_unit) * float(h.cantidad or 0)
+        if (h.coingecko_id or "").strip():
+            p["cid"] = h.coingecko_id.strip().lower()
+    for sale in sales:
+        p = _pos(sale.symbol)
+        if not p["cid"] and (sale.coingecko_id or "").strip():
+            p["cid"] = sale.coingecko_id.strip().lower()
+        p["sales"].append(
+            (
+                _sale_local_date(sale.sold_at),
+                float(sale.cantidad or 0),
+                float(sale.cost_total_usd) if sale.cost_total_usd is not None else 0.0,
+            )
+        )
+    for p in positions.values():
+        if not p["cid"]:
+            p["cid"] = coingecko.resolve_id(p["symbol"])
+
+    def qty_on(p: dict, d: date) -> float:
+        return p["qty"] + sum(q for sd, q, _c in p["sales"] if sd > d)
+
+    def cost_on(p: dict, d: date) -> float:
+        return p["cost"] + sum(c for sd, _q, c in p["sales"] if sd > d)
+
+    existing = {
+        d
+        for (d,) in db.query(CryptoSnapshot.date)
+        .filter(
+            CryptoSnapshot.user_id == user_id,
+            CryptoSnapshot.date >= since,
+            CryptoSnapshot.date <= until,
+        )
+        .all()
+    }
+    dates_to_fill: list[date] = []
+    cur = since
+    while cur <= until:
+        if cur not in existing:
+            dates_to_fill.append(cur)
+        cur += timedelta(days=1)
+    if not dates_to_fill:
+        return {**empty, "skipped_existing": len(existing)}
+
+    # Sólo pedimos historia de las monedas que se tenían en algún día a completar.
+    first_day = dates_to_fill[0]
+    needed = [
+        p for p in positions.values()
+        if p["qty"] > QTY_EPSILON or any(sd > first_day for sd, _q, _c in p["sales"])
+    ]
+
     # Pull historical USD prices per coin — Binance first (1200 req/min),
     # CoinGecko fallback for coins without a Binance USDT pair.
     histories: dict[str, dict[date, float]] = {}
     failed: list[str] = []
-    for h in holdings:
-        cid = (h.coingecko_id or "").strip().lower()
+    for p in needed:
+        cid = p["cid"]
         if not cid:
-            failed.append(h.symbol)
+            failed.append(p["symbol"])
+            continue
+        if cid in histories:
             continue
         # Try Binance first
         try:
             data = await binance_svc.fetch_history_usd(cid, since, until)
             if data:
                 histories[cid] = data
-                log.info("backfill: Binance OK for %s (%d days)", h.symbol, len(data))
+                log.info("backfill: Binance OK for %s (%d days)", p["symbol"], len(data))
                 continue
         except BinanceError as e:
-            log.warning("backfill: Binance failed for %s: %s — trying CoinGecko", h.symbol, e)
+            log.warning("backfill: Binance failed for %s: %s — trying CoinGecko", p["symbol"], e)
         # CoinGecko fallback (with delay to respect free-tier rate limit)
         await asyncio.sleep(2)
         try:
             data = await coingecko.fetch_history_usd(cid, since, until)
             if data:
                 histories[cid] = data
-                log.info("backfill: CoinGecko fallback OK for %s (%d days)", h.symbol, len(data))
+                log.info("backfill: CoinGecko fallback OK for %s (%d days)", p["symbol"], len(data))
             else:
-                log.warning("backfill: CoinGecko returned empty for %s", h.symbol)
-                failed.append(h.symbol)
+                log.warning("backfill: CoinGecko returned empty for %s", p["symbol"])
+                failed.append(p["symbol"])
         except CoinGeckoError as e2:
-            log.warning("backfill: CoinGecko fallback failed for %s: %s", h.symbol, e2)
-            failed.append(h.symbol)
+            log.warning("backfill: CoinGecko fallback failed for %s: %s", p["symbol"], e2)
+            failed.append(p["symbol"])
 
     if not histories:
         return {
-            "days": 0,
-            "since": since.isoformat(),
-            "until": until.isoformat(),
+            **empty,
             "failed_symbols": failed,
+            "skipped_existing": len(existing),
         }
 
     # Historical ARS rate from DolarQuote table; fall back to most recent / current
@@ -469,53 +592,139 @@ async def backfill_history(
     rate_history = {dq.date: float(dq.promedio) for dq in quotes if dq.promedio}
     fallback_rate, _ = await _get_dolar_rate(db)
 
-    # Cost is current total cost (constant across the simulated history)
-    cost_usd = sum(
-        float(h.costo_usd_unit or 0) * float(h.cantidad or 0)
-        for h in holdings
-        if h.costo_usd_unit is not None
-    )
-
     days = 0
-    cur = since
-    while cur <= until:
+    skipped_incomplete = 0
+    for cur in dates_to_fill:
         total_usd = 0.0
+        cost_usd = 0.0
         breakdown: list[dict] = []
-        for h in holdings:
-            cid = (h.coingecko_id or "").strip().lower()
+        incomplete = False
+        for p in needed:
+            qty = qty_on(p, cur)
+            if qty <= QTY_EPSILON:
+                continue
+            cid = p["cid"]
             if not cid:
+                # Sin fuente de precio: tampoco se valúa en el reporte en vivo.
                 continue
             price = _nearest_price(histories.get(cid, {}), cur)
             if price is None:
-                continue
-            qty = float(h.cantidad or 0)
+                # Falta el precio de una moneda que se tenía ese día: el total
+                # saldría subvaluado y, como después no se pisa, quedaría mal
+                # para siempre. Mejor no crear el snapshot.
+                incomplete = True
+                break
             value = qty * price
             total_usd += value
+            cost_usd += cost_on(p, cur)
             if value:
-                breakdown.append({"symbol": h.symbol, "value_usd": value})
+                breakdown.append({"symbol": p["symbol"], "value_usd": value})
 
-        if total_usd > 0:
-            rate = rate_history.get(cur)
-            if rate is None:
-                prior = [d for d in rate_history if d <= cur]
-                rate = rate_history[max(prior)] if prior else fallback_rate
+        if incomplete:
+            skipped_incomplete += 1
+            continue
+        if total_usd <= 0:
+            continue
+        for b in breakdown:
+            b["pct"] = b["value_usd"] / total_usd * 100
 
-            upsert_snapshot(
-                db,
+        rate = rate_history.get(cur)
+        if rate is None:
+            prior = [d for d in rate_history if d <= cur]
+            rate = rate_history[max(prior)] if prior else fallback_rate
+
+        # Re-chequeo por si el reporte en vivo creó el de hoy mientras tanto.
+        exists = (
+            db.query(CryptoSnapshot.id)
+            .filter(CryptoSnapshot.user_id == user_id, CryptoSnapshot.date == cur)
+            .first()
+        )
+        if exists is not None:
+            continue
+        db.add(
+            CryptoSnapshot(
                 user_id=user_id,
-                on_date=cur,
+                date=cur,
                 total_usd=total_usd,
                 total_ars=total_usd * (rate or 0),
                 cost_usd=cost_usd,
                 dolar_rate=rate or 0,
-                breakdown=breakdown,
+                breakdown_json=breakdown,
             )
-            days += 1
-        cur += timedelta(days=1)
+        )
+        db.commit()
+        days += 1
 
     return {
         "days": days,
         "since": since.isoformat(),
         "until": until.isoformat(),
         "failed_symbols": failed,
+        "skipped_existing": len(existing),
+        "skipped_incomplete": skipped_incomplete,
     }
+
+
+def snapshots_with_flows(db: Session, user_id: int, since: date) -> list[dict]:
+    """Snapshots desde `since` con el flujo neto de dinero de cada día.
+
+    `flujo_usd` = plata que entró (+) / salió (-) del portfolio crypto entre el
+    snapshot anterior de la lista (exclusive) y este (inclusive), para que el
+    gráfico pueda separar rendimiento de aportes/retiros:
+    variación = (valor - valor_prev - flujo) / valor_prev.
+
+    Se deriva del costo: una compra sube el costo por lo invertido; una venta
+    baja el costo por su base mientras el valor cae por lo cobrado
+    (= base + P&L realizado). Entonces
+        flujo = (costo_hoy - costo_prev) - P&L realizado de las ventas del tramo.
+    Si una venta no tiene costo base conocido, su base nunca estuvo en el costo
+    del snapshot: se descuenta el ingreso completo.
+    Limitación: compras sin costo cargado no mueven el costo y se ven como
+    rendimiento.
+    """
+    snaps: list[CryptoSnapshot] = (
+        db.query(CryptoSnapshot)
+        .filter(CryptoSnapshot.user_id == user_id, CryptoSnapshot.date >= since)
+        .order_by(CryptoSnapshot.date.asc())
+        .all()
+    )
+    if not snaps:
+        return []
+    sales = [
+        (_sale_local_date(s.sold_at), s)
+        for s in db.query(CryptoSale).filter(CryptoSale.user_id == user_id).all()
+    ]
+
+    out: list[dict] = []
+    prev: Optional[CryptoSnapshot] = None
+    for sn in snaps:
+        rate = float(sn.dolar_rate or 0)
+        if prev is None:
+            flujo_usd = 0.0
+            flujo_ars: Optional[float] = 0.0
+        else:
+            delta_cost = float(sn.cost_usd or 0) - float(prev.cost_usd or 0)
+            ajuste = 0.0
+            for sd, s in sales:
+                if prev.date < sd <= sn.date:
+                    if s.pnl_usd is not None:
+                        ajuste += float(s.pnl_usd)
+                    else:
+                        ajuste += float(s.proceeds_usd or 0)
+            flujo_usd = round(delta_cost - ajuste, 2)
+            flujo_ars = round(flujo_usd * rate, 2) if rate else None
+        out.append(
+            {
+                "id": sn.id,
+                "date": sn.date,
+                "taken_at": sn.taken_at,
+                "total_usd": float(sn.total_usd or 0),
+                "total_ars": float(sn.total_ars or 0),
+                "cost_usd": float(sn.cost_usd or 0),
+                "dolar_rate": rate,
+                "flujo_usd": flujo_usd,
+                "flujo_ars": flujo_ars,
+            }
+        )
+        prev = sn
+    return out

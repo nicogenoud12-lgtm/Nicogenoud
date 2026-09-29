@@ -36,8 +36,10 @@ KNOWN_IDS: dict[str, str] = {
     "LTC": "litecoin",
     "ATOM": "cosmos",
     "AVAX": "avalanche-2",
+    # MATIC migró a POL (sept 2024). En CoinGecko el token nuevo es
+    # "polygon-ecosystem-token"; en Binance ambos IDs apuntan a POLUSDT.
     "MATIC": "matic-network",
-    "POL": "matic-network",
+    "POL": "polygon-ecosystem-token",
     "LINK": "chainlink",
     "UNI": "uniswap",
     "XRP": "ripple",
