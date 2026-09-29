@@ -1,14 +1,17 @@
-import { useState, useMemo } from "react";
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { getKpis, getHoldings, getUpcomingEvents } from "../api/portfolio";
 import { listSnapshots } from "../api/snapshots";
+import Card from "../components/Card.jsx";
+import Delta from "../components/Delta.jsx";
 import KpiCard from "../components/KpiCard.jsx";
 import LoadingSpinner from "../components/LoadingSpinner.jsx";
 import EmptyState from "../components/EmptyState.jsx";
+import PageHeader from "../components/PageHeader.jsx";
 import PortfolioLineChart from "../components/charts/PortfolioLineChart.jsx";
 import AssetDonutChart from "../components/charts/AssetDonutChart.jsx";
-import { formatARS, formatUSD, formatDate } from "../utils/format";
+import { formatARS, formatUSD } from "../utils/format";
 import { useUiStore } from "../store/uiStore";
 import { periodToDays } from "../utils/periods";
 
@@ -19,85 +22,93 @@ function efectiveVar(h) {
   return null;
 }
 
-function MoversTable({ items, currency, fmt }) {
-  if (!items.length) {
-    return <div className="text-sm text-textMuted py-2">Sin datos del día disponibles.</div>;
-  }
+function HoldingRow({ h, currency, fmt, showDesc = false }) {
+  const val = currency === "USD" ? h.valuacion_usd : h.valuacion_ars;
+  const ev = efectiveVar(h);
   return (
-    <ul className="divide-y divide-border">
-      {items.map((h) => {
-        const val = currency === "USD" ? h.valuacion_usd : h.valuacion_ars;
-        const ev = efectiveVar(h);
-        if (!ev) return null;
-        const isPos = ev.value >= 0;
-        return (
-          <li key={h.id} className="py-2 flex items-center justify-between gap-2">
-            <div className="min-w-0">
-              <div className="font-medium truncate">{h.simbolo}</div>
-              <div className="text-xs text-textMuted truncate">{h.clase}</div>
-            </div>
-            <div className="text-right tabular-nums shrink-0">
-              <div className="text-sm">{fmt(val)}</div>
-              <div className={`text-xs font-semibold ${isPos ? "text-success" : "text-danger"}`}>
-                {isPos ? "+" : ""}{ev.value.toFixed(2)}%
-                {ev.isYesterday && <span className="text-textMuted font-normal ml-1">ayer</span>}
-              </div>
-            </div>
-          </li>
-        );
-      })}
+    <li className="flex items-center justify-between gap-3 py-2.5">
+      <div className="min-w-0">
+        <div className="text-sm font-medium text-text truncate">{h.simbolo}</div>
+        <div className="text-xs text-textMuted truncate">
+          {h.clase}
+          {showDesc && h.descripcion ? ` · ${h.descripcion}` : ""}
+        </div>
+      </div>
+      <div className="text-right shrink-0">
+        <div className="text-sm text-text num">{fmt(val)}</div>
+        {ev && (
+          <div className="text-xs">
+            <Delta value={ev.value} />
+            {ev.isYesterday && <span className="text-textMuted ml-1">ayer</span>}
+          </div>
+        )}
+      </div>
+    </li>
+  );
+}
+
+function Movers({ items, currency, fmt, empty }) {
+  if (!items.length) return <div className="text-sm text-textMuted py-2">{empty}</div>;
+  return (
+    <ul className="divide-hair -my-2.5">
+      {items.map((h) => (
+        <HoldingRow key={h.id} h={h} currency={currency} fmt={fmt} />
+      ))}
     </ul>
   );
 }
 
-function UpcomingPayments({ events, currency, fmt }) {
-  if (!events?.length) return (
-    <div className="text-sm text-textMuted">Sin pagos estimados próximos (se requiere historial de operaciones).</div>
-  );
+function UpcomingPayments({ events }) {
+  if (!events?.length)
+    return (
+      <div className="text-sm text-textMuted">
+        Sin pagos estimados próximos (se necesita historial de operaciones).
+      </div>
+    );
 
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full text-sm">
+    <div className="overflow-x-auto -mx-5">
+      <table className="w-full text-[13px]">
         <thead>
-          <tr className="text-xs text-textMuted uppercase">
-            <th className="text-left pb-2 pr-4">Símbolo</th>
-            <th className="text-left pb-2 pr-4">Tipo</th>
-            <th className="text-left pb-2 pr-4">Fecha estimada</th>
-            <th className="text-right pb-2">Monto estimado</th>
+          <tr className="border-b border-border">
+            <th className="px-5 h-9 text-left text-xs font-medium text-textMuted">Símbolo</th>
+            <th className="px-5 h-9 text-left text-xs font-medium text-textMuted">Tipo</th>
+            <th className="px-5 h-9 text-left text-xs font-medium text-textMuted">Fecha estimada</th>
+            <th className="px-5 h-9 text-right text-xs font-medium text-textMuted">Monto estimado</th>
           </tr>
         </thead>
-        <tbody className="divide-y divide-border">
+        <tbody>
           {events.map((e, i) => (
-            <tr key={i}>
-              <td className="py-2 pr-4">
-                <div className="font-medium">{e.simbolo}</div>
-                <div className="text-xs text-textMuted truncate max-w-[140px]">{e.descripcion}</div>
+            <tr key={i} className="border-b border-border last:border-b-0">
+              <td className="px-5 py-2.5">
+                <div className="font-medium text-text">{e.simbolo}</div>
+                <div className="text-xs text-textMuted truncate max-w-[180px]">{e.descripcion}</div>
               </td>
-              <td className="py-2 pr-4">
-                <span className={`chip text-xs ${e.event_kind === "RENTA" ? "border-accent/40 text-accent" : "border-warn/40 text-warn"}`}>
-                  {e.event_kind}
-                </span>
+              <td className="px-5 py-2.5 text-textSecondary">
+                {e.event_kind === "RENTA" ? "Renta" : "Amortización"}
               </td>
-              <td className="py-2 pr-4 tabular-nums text-sm">{e.estimated_date}</td>
-              <td className="py-2 text-right tabular-nums">
-                {Number(e.last_amount) === 0
-                  ? <span className="text-textMuted">pendiente</span>
-                  : e.currency_kind?.startsWith("USD")
-                    ? `USD ${Number(e.last_amount).toLocaleString("es-AR", { minimumFractionDigits: 2 })}`
-                    : formatARS(e.last_amount)
-                }
-                {e.interval_days > 0 && (
-                  <div className="text-xs text-textMuted">cada ~{e.interval_days}d</div>
-                )}
-                {e.interval_days === 0 && (
-                  <div className="text-xs text-textMuted">vencimiento</div>
-                )}
+              <td className="px-5 py-2.5 num text-textSecondary">{e.estimated_date}</td>
+              <td className="px-5 py-2.5 text-right">
+                <div className="num text-text">
+                  {Number(e.last_amount) === 0 ? (
+                    <span className="text-textMuted">pendiente</span>
+                  ) : e.currency_kind?.startsWith("USD") ? (
+                    formatUSD(e.last_amount)
+                  ) : (
+                    formatARS(e.last_amount)
+                  )}
+                </div>
+                <div className="text-xs text-textMuted">
+                  {e.interval_days > 0 ? `cada ~${e.interval_days} días` : "vencimiento"}
+                </div>
               </td>
             </tr>
           ))}
         </tbody>
       </table>
-      <div className="mt-2 text-xs text-textMuted">* Fechas y montos estimados sobre tenencia actual. Corroborar con IOL.</div>
+      <div className="px-5 pt-3 text-xs text-textMuted">
+        Fechas y montos estimados sobre la tenencia actual. Corroborar con IOL.
+      </div>
     </div>
   );
 }
@@ -143,123 +154,114 @@ export default function ResumenScreen() {
   const gainers = withDaily
     .filter((h) => efectiveVar(h).value > 0)
     .sort((a, b) => efectiveVar(b).value - efectiveVar(a).value)
-    .slice(0, 10);
+    .slice(0, 8);
   const losers = withDaily
     .filter((h) => efectiveVar(h).value < 0)
     .sort((a, b) => efectiveVar(a).value - efectiveVar(b).value)
-    .slice(0, 10);
+    .slice(0, 8);
 
   const allSorted = [...allHoldings].sort((a, b) => Number(b.valuacion_ars) - Number(a.valuacion_ars));
   const displayHoldings = selectedClass
     ? allSorted.filter((h) => h.clase === selectedClass)
     : allSorted.slice(0, 5);
 
-  return (
-    <div className="space-y-6">
-      {/* KPIs */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
-        <KpiCard
-          label="Valor total"
-          value={fmt(currency === "USD" ? k.total_usd : k.total_ars)}
-          sub={`${k.dolar_source}: ${Number(k.dolar_rate).toFixed(2)}`}
-        />
-        <KpiCard
-          label="P&L no realizada"
-          value={fmt(pnlNoReal)}
-          tone={pnlNoReal >= 0 ? "positive" : "negative"}
-          sub="valuación actual − costo"
-        />
-        <KpiCard label={`Renta ${k.kpi_year}`} value={fmt(renta)} sub="MEP del día" />
-        <KpiCard label={`Amortizaciones ${k.kpi_year}`} value={fmt(amort)} sub="MEP del día" />
-        <KpiCard label={`Dividendos ${k.kpi_year}`} value={fmt(divs)} sub="MEP del día" />
-      </div>
+  const rate = Number(k.dolar_rate).toLocaleString("es-AR", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
 
-      {/* Charts */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 items-stretch">
-        <div className="lg:col-span-2">
-          <PortfolioLineChart
-            data={snaps.data || []}
+  return (
+    <div>
+      <PageHeader title="Inversiones" subtitle={`Cartera IOL · ${k.dolar_source} ${rate}`} />
+
+      <div className="space-y-4">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="col-span-2 lg:row-span-2">
+            <KpiCard
+              hero
+              label="Valor total"
+              value={fmt(currency === "USD" ? k.total_usd : k.total_ars)}
+              sub={`${allHoldings.length} tenencias`}
+            />
+          </div>
+          <KpiCard
+            label="P&L no realizada"
+            value={`${pnlNoReal > 0 ? "+" : ""}${fmt(pnlNoReal)}`}
+            tone={pnlNoReal >= 0 ? "positive" : "negative"}
+            sub="Valuación − costo"
+          />
+          <KpiCard label={`Renta ${k.kpi_year}`} value={fmt(renta)} sub="Al MEP de cada pago" />
+          <KpiCard label={`Amortizaciones ${k.kpi_year}`} value={fmt(amort)} sub="Al MEP de cada pago" />
+          <KpiCard label={`Dividendos ${k.kpi_year}`} value={fmt(divs)} sub="Al MEP de cada pago" />
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 items-stretch">
+          <div className="lg:col-span-2">
+            <PortfolioLineChart
+              data={snaps.data || []}
+              selectedClass={selectedClass}
+              period={snapPeriod}
+              onPeriodChange={setSnapPeriod}
+              className="h-full min-h-[22rem]"
+            />
+          </div>
+          <AssetDonutChart
+            data={k.distribucion_por_clase || []}
             selectedClass={selectedClass}
-            period={snapPeriod}
-            onPeriodChange={setSnapPeriod}
-            className="card p-4 h-full min-h-[20rem]"
+            onSelect={setSelectedClass}
           />
         </div>
-        <AssetDonutChart
-          data={k.distribucion_por_clase || []}
-          selectedClass={selectedClass}
-          onSelect={setSelectedClass}
-        />
-      </div>
 
-      {/* Movers */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <div className="card p-4">
-          <div className="label mb-3">Más subieron hoy</div>
-          <MoversTable items={gainers} currency={currency} fmt={fmt} />
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <Card title="Más subieron" subtitle="Variación del día">
+            <Movers items={gainers} currency={currency} fmt={fmt} empty="Ninguna tenencia subió hoy." />
+          </Card>
+          <Card title="Más bajaron" subtitle="Variación del día">
+            <Movers items={losers} currency={currency} fmt={fmt} empty="Ninguna tenencia bajó hoy." />
+          </Card>
         </div>
-        <div className="card p-4">
-          <div className="label mb-3">Más bajaron hoy</div>
-          <MoversTable items={losers} currency={currency} fmt={fmt} />
-        </div>
-      </div>
 
-      {/* Top 5 tenencias */}
-      <div className="card p-4">
-        <div className="flex items-center gap-2 mb-3">
-          <div className="label">
-            {selectedClass ? `Tenencias · ${selectedClass}` : "Top 5 tenencias"}
-          </div>
-          {selectedClass && (
-            <button
-              onClick={() => setSelectedClass(null)}
-              className="ml-auto text-xs chip cursor-pointer hover:bg-danger/20 hover:border-danger/40 hover:text-danger transition-colors"
-            >
-              ✕ Limpiar filtro
-            </button>
+        <Card
+          title={selectedClass ? `Tenencias · ${selectedClass}` : "Principales tenencias"}
+          subtitle={selectedClass ? `${displayHoldings.length} activos` : "Top 5 por valuación"}
+          action={
+            selectedClass && (
+              <button onClick={() => setSelectedClass(null)} className="btn-ghost h-7 px-2 text-xs">
+                Quitar filtro
+              </button>
+            )
+          }
+        >
+          {displayHoldings.length === 0 ? (
+            <div className="text-sm text-textMuted">
+              {selectedClass ? (
+                `Sin tenencias de clase "${selectedClass}".`
+              ) : (
+                <>
+                  Sin tenencias. Conectá IOL desde{" "}
+                  <Link to="/ajustes" className="text-text underline underline-offset-2">
+                    Ajustes
+                  </Link>
+                  .
+                </>
+              )}
+            </div>
+          ) : (
+            <ul className="divide-hair -my-2.5">
+              {displayHoldings.map((h) => (
+                <HoldingRow key={h.id} h={h} currency={currency} fmt={fmt} showDesc />
+              ))}
+            </ul>
           )}
-        </div>
-        {displayHoldings.length === 0 ? (
-          <div className="text-sm text-textMuted">
-            {selectedClass ? `Sin tenencias de clase "${selectedClass}".` : (
-              <>Sin tenencias. Conectá IOL desde <Link to="/ajustes" className="text-accent hover:underline">Ajustes</Link>.</>
-            )}
-          </div>
-        ) : (
-          <ul className="divide-y divide-border">
-            {displayHoldings.map((h) => (
-              <li key={h.id} className="py-2 flex items-center justify-between">
-                <div>
-                  <div className="font-medium">{h.simbolo}</div>
-                  <div className="text-xs text-textMuted">{h.clase} · {h.descripcion}</div>
-                </div>
-                <div className="text-right tabular-nums">
-                  <div>{fmt(currency === "USD" ? h.valuacion_usd : h.valuacion_ars)}</div>
-                  {(() => {
-                    const ev = efectiveVar(h);
-                    if (!ev) return null;
-                    return (
-                      <div className={`text-xs ${ev.value >= 0 ? "text-success" : "text-danger"}`}>
-                        {ev.value >= 0 ? "+" : ""}{ev.value.toFixed(2)}%
-                        {ev.isYesterday && <span className="text-textMuted ml-1">ayer</span>}
-                      </div>
-                    );
-                  })()}
-                </div>
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
+        </Card>
 
-      {/* Upcoming payments */}
-      <div className="card p-4">
-        <div className="label mb-3">Próximos pagos — ONs y Bonos</div>
-        {upcoming.isLoading ? (
-          <div className="text-sm text-textMuted">Calculando...</div>
-        ) : (
-          <UpcomingPayments events={upcoming.data} currency={currency} fmt={fmt} />
-        )}
+        <Card title="Próximos pagos" subtitle="ONs y bonos">
+          {upcoming.isLoading ? (
+            <div className="text-sm text-textMuted">Calculando…</div>
+          ) : (
+            <UpcomingPayments events={upcoming.data} />
+          )}
+        </Card>
       </div>
     </div>
   );

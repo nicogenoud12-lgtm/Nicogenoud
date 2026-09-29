@@ -16,8 +16,11 @@ import {
 } from "../api/crypto";
 import AssetDonutChart from "../components/charts/AssetDonutChart.jsx";
 import PortfolioLineChart from "../components/charts/PortfolioLineChart.jsx";
+import Card from "../components/Card.jsx";
+import Delta from "../components/Delta.jsx";
 import KpiCard from "../components/KpiCard.jsx";
 import LoadingSpinner from "../components/LoadingSpinner.jsx";
+import PageHeader from "../components/PageHeader.jsx";
 import { useUiStore } from "../store/uiStore";
 import { formatARS, formatDate, formatNumber, formatUSD } from "../utils/format";
 
@@ -55,6 +58,85 @@ function toNumberOrNull(v) {
   const n = Number(v);
   return Number.isFinite(n) ? n : null;
 }
+
+// ---- Presentación ----------------------------------------------------------
+
+const iconProps = {
+  width: 16,
+  height: 16,
+  viewBox: "0 0 24 24",
+  fill: "none",
+  stroke: "currentColor",
+  strokeWidth: 1.75,
+  strokeLinecap: "round",
+  strokeLinejoin: "round",
+  "aria-hidden": true,
+  className: "shrink-0",
+};
+
+const IconRefresh = () => (
+  <svg {...iconProps}>
+    <path d="M21 12a9 9 0 1 1-2.64-6.36" />
+    <path d="M21 3v6h-6" />
+  </svg>
+);
+const IconPlus = () => (
+  <svg {...iconProps}>
+    <path d="M12 5v14M5 12h14" />
+  </svg>
+);
+const IconClose = () => (
+  <svg {...iconProps}>
+    <path d="M18 6 6 18M6 6l12 12" />
+  </svg>
+);
+const IconInfo = () => (
+  <svg {...iconProps} className="shrink-0 mt-0.5">
+    <circle cx="12" cy="12" r="9" />
+    <path d="M12 11v5M12 8h.01" />
+  </svg>
+);
+const IconAlert = () => (
+  <svg {...iconProps} className="shrink-0 mt-0.5">
+    <path d="M12 3 2.5 20h19L12 3Z" />
+    <path d="M12 10v4M12 17h.01" />
+  </svg>
+);
+const IconCheck = () => (
+  <svg {...iconProps} className="shrink-0 mt-0.5">
+    <path d="m5 12 5 5 9-10" />
+  </svg>
+);
+
+// Monto con signo explícito: el color acompaña al signo, nunca va solo.
+function signedMoney(fmt, n) {
+  if (n == null || !isFinite(Number(n))) return "—";
+  const v = Number(n);
+  const abs = fmt(Math.abs(v));
+  return v > 0 ? `+${abs}` : v < 0 ? `−${abs}` : abs;
+}
+function toneClass(n) {
+  const v = Number(n || 0);
+  return v > 0 ? "text-success" : v < 0 ? "text-danger" : "text-textMuted";
+}
+function toneOf(n) {
+  const v = Number(n || 0);
+  return v > 0 ? "positive" : v < 0 ? "negative" : "neutral";
+}
+
+// Estilo de tabla alineado con DataTable (bordes hairline, cifras tabulares).
+const TH =
+  "px-4 h-10 text-left text-xs font-medium text-textMuted whitespace-nowrap first:pl-5 last:pr-5";
+const TD = "px-4 h-11 py-2 whitespace-nowrap first:pl-5 last:pr-5";
+const TD_NUM = `${TD} text-right num`;
+const TR =
+  "border-b border-border last:border-b-0 hover:bg-surfaceAlt/60 transition-colors";
+const ROW_ACTION_BASE =
+  "text-[13px] text-textMuted transition-colors disabled:opacity-50 disabled:cursor-not-allowed";
+const ROW_ACTION = `${ROW_ACTION_BASE} hover:text-text`;
+const ROW_ACTION_DANGER = `${ROW_ACTION_BASE} hover:text-danger`;
+
+// ---------------------------------------------------------------------------
 
 function CoinPicker({ value, onPick }) {
   const [q, setQ] = useState(value || "");
@@ -107,7 +189,7 @@ function CoinPicker({ value, onPick }) {
         }}
       />
       {open && (results.length > 0 || loading) && (
-        <div className="absolute z-20 mt-1 w-full card max-h-72 overflow-y-auto">
+        <div className="absolute z-20 mt-1 w-full card py-1 max-h-72 overflow-y-auto">
           {loading && (
             <div className="px-3 py-2 text-xs text-textMuted">Buscando…</div>
           )}
@@ -120,15 +202,15 @@ function CoinPicker({ value, onPick }) {
                 setOpen(false);
                 setQ("");
               }}
-              className="w-full text-left px-3 py-2 hover:bg-surfaceAlt flex items-center gap-2 text-sm"
+              className="w-full text-left px-3 h-9 hover:bg-surfaceAlt flex items-center gap-2.5 text-[13px] transition-colors"
             >
               {c.thumb && (
-                <img src={c.thumb} alt="" className="h-5 w-5 rounded-full" />
+                <img src={c.thumb} alt="" className="h-4 w-4 rounded-full" />
               )}
-              <span className="font-medium">{c.symbol}</span>
-              <span className="text-textMuted">{c.name}</span>
+              <span className="font-medium text-text">{c.symbol}</span>
+              <span className="text-textMuted truncate">{c.name}</span>
               {c.market_cap_rank && (
-                <span className="ml-auto text-xs text-textMuted">
+                <span className="ml-auto text-xs text-textMuted num">
                   #{c.market_cap_rank}
                 </span>
               )}
@@ -171,33 +253,39 @@ function SellModal({ item, onClose, onConfirm, pending, error }) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-      <div className="card w-full max-w-md p-5 space-y-4">
-        <div className="flex items-center gap-2">
-          <h2 className="text-lg font-semibold">Vender {item.symbol}</h2>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+      <div className="card card-pad w-full max-w-md">
+        <div className="flex items-start justify-between gap-3 mb-5">
+          <div className="min-w-0">
+            <h2 className="text-base font-semibold text-text">Vender {item.symbol}</h2>
+            <div className="text-xs text-textMuted mt-0.5">
+              Tenencia actual: <span className="num">{formatNumber(held)}</span>
+            </div>
+          </div>
           <button
-            className="ml-auto text-textMuted hover:text-text"
+            className="btn-ghost h-8 w-8 px-0"
             onClick={onClose}
             type="button"
+            aria-label="Cerrar"
           >
-            ✕
+            <IconClose />
           </button>
         </div>
 
-        <form onSubmit={submit} className="space-y-3">
+        <form onSubmit={submit} className="space-y-4">
           <div>
-            <div className="label mb-1 flex items-center justify-between">
-              <span>Cantidad a vender</span>
+            <div className="mb-1.5 flex items-center justify-between gap-2">
+              <span className="label">Cantidad a vender</span>
               <button
                 type="button"
-                className="text-xs text-accent hover:underline"
+                className="text-xs text-textMuted hover:text-text underline-offset-2 hover:underline num"
                 onClick={() => setQty(String(held))}
               >
                 Máx: {formatNumber(held)}
               </button>
             </div>
             <input
-              className="input"
+              className="input num"
               type="number"
               step="any"
               min="0"
@@ -206,19 +294,19 @@ function SellModal({ item, onClose, onConfirm, pending, error }) {
               required
             />
             {qtyN != null && qtyN > held + 1e-9 && (
-              <div className="text-xs text-danger mt-1">
+              <div className="text-xs text-danger mt-1.5">
                 Supera tu tenencia ({formatNumber(held)}).
               </div>
             )}
           </div>
 
           <div>
-            <div className="label mb-1 flex items-center justify-between">
-              <span>Precio de venta (USD / unidad)</span>
+            <div className="mb-1.5 flex items-center justify-between gap-2">
+              <span className="label">Precio de venta (USD por unidad)</span>
               {livePrice != null && (
                 <button
                   type="button"
-                  className="text-xs text-accent hover:underline"
+                  className="text-xs text-textMuted hover:text-text underline-offset-2 hover:underline num"
                   onClick={() => setPrice(String(livePrice))}
                 >
                   En vivo: {formatUSD(livePrice)}
@@ -226,7 +314,7 @@ function SellModal({ item, onClose, onConfirm, pending, error }) {
               )}
             </div>
             <input
-              className="input"
+              className="input num"
               type="number"
               step="any"
               min="0"
@@ -238,7 +326,7 @@ function SellModal({ item, onClose, onConfirm, pending, error }) {
           </div>
 
           <div>
-            <div className="label mb-1">Notas</div>
+            <div className="label mb-1.5">Notas</div>
             <input
               className="input"
               placeholder="Opcional"
@@ -247,46 +335,42 @@ function SellModal({ item, onClose, onConfirm, pending, error }) {
             />
           </div>
 
-          <div className="rounded-lg bg-surfaceAlt p-3 text-sm space-y-1">
-            <div className="flex justify-between">
+          <div className="rounded-lg border border-border px-3 text-[13px] divide-hair">
+            <div className="flex justify-between gap-3 py-2">
               <span className="text-textMuted">Ingreso por venta</span>
-              <span className="tabular-nums">
+              <span className="num text-text">
                 {proceeds != null ? formatUSD(proceeds) : "—"}
               </span>
             </div>
-            <div className="flex justify-between">
+            <div className="flex justify-between gap-3 py-2">
               <span className="text-textMuted">Costo (promedio)</span>
-              <span className="tabular-nums">
+              <span className="num text-text">
                 {costTotal != null ? formatUSD(costTotal) : "—"}
               </span>
             </div>
-            <div className="flex justify-between font-medium">
-              <span className="text-textMuted">P&L realizado</span>
-              <span
-                className={`tabular-nums ${
-                  pnl == null
-                    ? ""
-                    : pnl >= 0
-                      ? "text-success"
-                      : "text-danger"
-                }`}
-              >
-                {pnl != null ? formatUSD(pnl) : "—"}
+            <div className="flex justify-between gap-3 py-2 font-medium">
+              <span className="text-textSecondary">P&L realizado</span>
+              <span className="num text-right">
+                <span className={pnl == null ? "text-textMuted" : toneClass(pnl)}>
+                  {signedMoney(formatUSD, pnl)}
+                </span>
                 {pnlPct != null && (
-                  <> ({pnlPct >= 0 ? "+" : ""}{pnlPct.toFixed(2)}%)</>
+                  <span className="ml-2 font-normal">
+                    <Delta value={pnlPct} />
+                  </span>
                 )}
               </span>
             </div>
             {qtyN != null && qtyN < held - 1e-9 && (
-              <div className="text-xs text-textMuted pt-1">
-                Quedan {formatNumber(held - qtyN)} {item.symbol} en cartera.
+              <div className="py-2 text-xs text-textMuted">
+                Quedan <span className="num">{formatNumber(held - qtyN)}</span> {item.symbol} en cartera.
               </div>
             )}
           </div>
 
-          {error && <div className="text-sm text-danger">{error}</div>}
+          {error && <div className="text-[13px] text-danger">{error}</div>}
 
-          <div className="flex gap-2 justify-end">
+          <div className="flex gap-2 justify-end pt-1">
             <button type="button" className="btn-secondary" onClick={onClose}>
               Cancelar
             </button>
@@ -391,8 +475,23 @@ export default function CryptoScreen() {
       setSortDir("desc");
     }
   }
-  const sortIndicator = (key) =>
-    sortKey === key ? (sortDir === "desc" ? " ↓" : " ↑") : "";
+  const sortTh = (key, label, align = "right") => (
+    <th
+      key={key}
+      className={`${TH} cursor-pointer select-none hover:text-text ${
+        align === "right" ? "text-right" : ""
+      }`}
+      onClick={() => toggleSort(key)}
+      aria-sort={
+        sortKey === key ? (sortDir === "asc" ? "ascending" : "descending") : undefined
+      }
+    >
+      {label}
+      {sortKey === key && (
+        <span className="ml-1 text-text">{sortDir === "desc" ? "↓" : "↑"}</span>
+      )}
+    </th>
+  );
 
   function resetForm() {
     setForm(EMPTY_FORM);
@@ -535,472 +634,434 @@ export default function CryptoScreen() {
 
   const saving = createM.isPending || updateM.isPending;
 
+  const subtitle = report.isFetching
+    ? "Actualizando cotizaciones…"
+    : r?.fetched_at
+      ? `Cotizaciones de las ${new Date(r.fetched_at).toLocaleTimeString("es-AR")}`
+      : "Tenencias propias con cotización en vivo";
+
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-center gap-2">
-        <h1 className="text-xl font-semibold mr-auto">Crypto</h1>
-        <button
-          className="btn-secondary text-xs"
-          onClick={() => backfillM.mutate()}
-          disabled={backfillM.isPending}
-          title="Completa los días sin snapshot desde el 1° de enero con precios históricos. Reconstruye las cantidades sumando lo vendido después de cada día. No pisa los días ya guardados."
-        >
-          {backfillM.isPending ? "Recalculando…" : "↻ Recalcular evolución"}
-        </button>
-        {report.isFetching && (
-          <span className="text-xs text-textMuted">Actualizando…</span>
-        )}
-        {r?.fetched_at && !report.isFetching && (
-          <span className="text-xs text-textMuted">
-            {new Date(r.fetched_at).toLocaleTimeString("es-AR")}
-          </span>
-        )}
-      </div>
-      {backfillM.isSuccess && backfillM.data && (
-        <div className="card p-3 text-sm">
-          Evolución completada: {backfillM.data.days} días nuevos desde {backfillM.data.since}
-          {backfillM.data.skipped_existing > 0 && (
-            <> · {backfillM.data.skipped_existing} ya existían (no se tocaron)</>
-          )}
-          {backfillM.data.skipped_incomplete > 0 && (
-            <> · {backfillM.data.skipped_incomplete} sin precio completo</>
-          )}
-          {backfillM.data.failed_symbols?.length > 0 && (
-            <> · Sin historial: {backfillM.data.failed_symbols.join(", ")}</>
-          )}
-        </div>
-      )}
+    <div>
+      <PageHeader
+        title="Crypto"
+        subtitle={subtitle}
+        actions={
+          <button
+            className="btn-secondary"
+            onClick={() => backfillM.mutate()}
+            disabled={backfillM.isPending}
+            title="Completa los días sin snapshot desde el 1° de enero con precios históricos. Reconstruye las cantidades sumando lo vendido después de cada día. No pisa los días ya guardados."
+          >
+            <IconRefresh />
+            {backfillM.isPending ? "Recalculando…" : "Recalcular evolución"}
+          </button>
+        }
+      />
 
-      {r?.fetch_error && (
-        <div className="card p-3 text-sm border-warn/30 text-warn">
-          No se pudieron obtener cotizaciones: {r.fetch_error}. Se muestran los
-          datos por costo cargado.
-        </div>
-      )}
-      {r?.missing_coingecko?.length > 0 && (
-        <div className="card p-3 text-sm text-textMuted">
-          Sin precio en vivo: <strong>{r.missing_coingecko.join(", ")}</strong>.
-          Editá la tenencia y elegí la moneda desde el buscador para asignarle un
-          ID de CoinGecko.
-        </div>
-      )}
+      <div className="space-y-6">
+        {(backfillM.isSuccess && backfillM.data) ||
+        r?.fetch_error ||
+        r?.missing_coingecko?.length > 0 ? (
+          <div className="space-y-2">
+            {backfillM.isSuccess && backfillM.data && (
+              <div className="notice">
+                <IconCheck />
+                <div>
+                  Evolución completada: {backfillM.data.days} días nuevos desde{" "}
+                  {backfillM.data.since}
+                  {backfillM.data.skipped_existing > 0 && (
+                    <> · {backfillM.data.skipped_existing} ya existían (no se tocaron)</>
+                  )}
+                  {backfillM.data.skipped_incomplete > 0 && (
+                    <> · {backfillM.data.skipped_incomplete} sin precio completo</>
+                  )}
+                  {backfillM.data.failed_symbols?.length > 0 && (
+                    <> · Sin historial: {backfillM.data.failed_symbols.join(", ")}</>
+                  )}
+                </div>
+              </div>
+            )}
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <KpiCard
-          label={`Valor (${currency})`}
-          value={fmt(totalValue || 0)}
-          sub={
-            r?.ars_rate
-              ? `${r.dolar_source}: ${Number(r.ars_rate).toFixed(2)}`
-              : null
-          }
-        />
-        <KpiCard label={`Costo (${currency})`} value={fmt(totalCost || 0)} />
-        <KpiCard
-          label="P&L"
-          value={fmt(pnlValue || 0)}
-          tone={(pnlValue || 0) >= 0 ? "positive" : "negative"}
-        />
-        <KpiCard
-          label="P&L %"
-          value={
-            r?.pnl_total_pct != null ? `${r.pnl_total_pct.toFixed(2)}%` : "—"
-          }
-          tone={(r?.pnl_total_pct || 0) >= 0 ? "positive" : "negative"}
-        />
-      </div>
+            {r?.fetch_error && (
+              <div className="notice">
+                <IconAlert />
+                <div>
+                  <span className="font-medium text-text">Atención:</span> No se
+                  pudieron obtener cotizaciones: {r.fetch_error}. Se muestran los
+                  datos por costo cargado.
+                </div>
+              </div>
+            )}
+            {r?.missing_coingecko?.length > 0 && (
+              <div className="notice">
+                <IconInfo />
+                <div>
+                  Sin precio en vivo:{" "}
+                  <span className="font-medium text-text">
+                    {r.missing_coingecko.join(", ")}
+                  </span>
+                  . Editá la tenencia y elegí la moneda desde el buscador para
+                  asignarle un ID de CoinGecko.
+                </div>
+              </div>
+            )}
+          </div>
+        ) : null}
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <div className="lg:col-span-2">
-          <PortfolioLineChart
-            data={snaps.data || []}
-            period={snapPeriod}
-            onPeriodChange={setSnapPeriod}
-            title="Evolución Crypto"
+        <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="col-span-2 lg:col-span-1 min-w-0 [&>*]:h-full">
+            <KpiCard
+              hero
+              label={`Valor total (${currency})`}
+              value={<span className="num">{fmt(totalValue || 0)}</span>}
+              sub={
+                r?.ars_rate
+                  ? `Dólar ${r.dolar_source}: ${formatARS(Number(r.ars_rate))}`
+                  : null
+              }
+            />
+          </div>
+          <KpiCard
+            label={`Costo (${currency})`}
+            value={<span className="num">{fmt(totalCost || 0)}</span>}
+          />
+          <KpiCard
+            label="P&L"
+            value={<span className="num">{signedMoney(fmt, pnlValue || 0)}</span>}
+            tone={toneOf(pnlValue)}
+            sub={r?.pnl_total_pct != null ? <Delta value={r.pnl_total_pct} /> : null}
           />
         </div>
-        {distribution.length > 0 ? (
-          <AssetDonutChart data={distribution} />
-        ) : (
-          <div className="card p-4 flex items-center justify-center text-sm text-textMuted">
-            Cargá tenencias con precio en vivo para ver la distribución.
-          </div>
-        )}
-      </div>
 
-      <div className="card p-4">
-        <div className="label mb-3">Top movers · 24h</div>
-        {movers.length === 0 ? (
-          <div className="text-sm text-textMuted">
-            Sin datos de variación. Asegurate de que tus tenencias tengan asignado
-            un ID de CoinGecko.
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          <div className="lg:col-span-2 min-w-0">
+            <PortfolioLineChart
+              data={snaps.data || []}
+              period={snapPeriod}
+              onPeriodChange={setSnapPeriod}
+              title="Evolución crypto"
+              className="h-[22rem]"
+            />
           </div>
-        ) : (
-          <ul className="divide-y divide-border">
-            {movers.map((m) => (
-              <li
-                key={m.id}
-                className="py-2 flex items-center justify-between gap-2"
-              >
-                <div className="min-w-0">
-                  <div className="font-medium">{m.symbol}</div>
-                  <div className="text-xs text-textMuted truncate">
-                    {m.name || m.coingecko_id}
-                  </div>
-                </div>
-                <div className="text-right tabular-nums">
-                  <div>{fmt(currency === "USD" ? m.value_usd : m.value_ars)}</div>
-                  <div
-                    className={`text-xs ${
-                      (m.change_24h_pct || 0) >= 0 ? "text-success" : "text-danger"
-                    }`}
-                  >
-                    {m.change_24h_pct >= 0 ? "+" : ""}
-                    {m.change_24h_pct.toFixed(2)}%
-                  </div>
-                </div>
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
-
-      <div className="card p-4 space-y-3">
-        <div className="flex items-center gap-2">
-          <div className="label">Mis tenencias</div>
-          <button
-            className="ml-auto btn-primary"
-            onClick={() => {
-              if (showForm && editingId == null) {
-                resetForm();
-              } else {
-                setEditingId(null);
-                setForm(EMPTY_FORM);
-                setShowForm(true);
-              }
-            }}
-          >
-            {showForm && editingId == null ? "Cerrar" : "+ Agregar tenencia"}
-          </button>
+          {distribution.length > 0 ? (
+            <AssetDonutChart
+              data={distribution}
+              title="Distribución por moneda"
+            />
+          ) : (
+            <div className="card card-pad flex items-center justify-center text-center text-sm text-textMuted">
+              Cargá tenencias con precio en vivo para ver la distribución.
+            </div>
+          )}
         </div>
 
-        {showForm && (
-          <form
-            onSubmit={handleSubmit}
-            className="grid grid-cols-1 md:grid-cols-6 gap-3 border-t border-border pt-3"
-          >
-            <div className="md:col-span-3">
-              <div className="label mb-1">Buscar en CoinGecko</div>
-              <CoinPicker onPick={handlePick} />
-              {form.coingecko_id && (
-                <div className="text-xs text-textMuted mt-1">
-                  ID: <code>{form.coingecko_id}</code>
-                </div>
-              )}
+        <Card title="Mayores movimientos" subtitle="Variación de las últimas 24 h">
+          {movers.length === 0 ? (
+            <div className="text-sm text-textMuted">
+              Sin datos de variación. Asegurate de que tus tenencias tengan asignado
+              un ID de CoinGecko.
             </div>
-            <div className="md:col-span-1">
-              <div className="label mb-1">Símbolo *</div>
-              <input
-                className="input uppercase"
-                placeholder="BTC"
-                value={form.symbol}
-                onChange={(e) => setForm({ ...form, symbol: e.target.value })}
-                required
-              />
+          ) : (
+            <ul className="divide-hair -my-2">
+              {movers.map((m) => (
+                <li
+                  key={m.id}
+                  className="py-2.5 flex items-center justify-between gap-3 text-[13px]"
+                >
+                  <div className="min-w-0">
+                    <div className="font-medium text-text">{m.symbol}</div>
+                    <div className="text-xs text-textMuted truncate">
+                      {m.name || m.coingecko_id}
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className="num text-text">
+                      {fmt(currency === "USD" ? m.value_usd : m.value_ars)}
+                    </div>
+                    <Delta value={m.change_24h_pct} className="text-xs" />
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Card>
+
+        <section className="card min-w-0">
+          <div className="flex items-start justify-between gap-3 p-5 pb-4">
+            <div className="min-w-0">
+              <h2 className="section-title">Mis tenencias</h2>
+              <div className="text-xs text-textMuted mt-0.5">
+                {tableRows.length > 0
+                  ? `${tableRows.length} ${tableRows.length === 1 ? "moneda" : "monedas"} · ${currency}`
+                  : "Cargadas a mano, cotizadas con CoinGecko"}
+              </div>
             </div>
-            <div className="md:col-span-2">
-              <div className="label mb-1">Nombre</div>
-              <input
-                className="input"
-                placeholder="Bitcoin"
-                value={form.name}
-                onChange={(e) => setForm({ ...form, name: e.target.value })}
-              />
-            </div>
-            <div className="md:col-span-2">
-              <div className="label mb-1">Cantidad *</div>
-              <input
-                className="input"
-                type="number"
-                step="any"
-                min="0"
-                placeholder="0.5"
-                value={form.cantidad}
-                onChange={(e) => setForm({ ...form, cantidad: e.target.value })}
-                required
-              />
-            </div>
-            <div className="md:col-span-2">
-              <div className="label mb-1">Costo unit. (USD)</div>
-              <input
-                className="input"
-                type="number"
-                step="any"
-                min="0"
-                placeholder="65000"
-                value={form.costo_usd_unit}
-                onChange={(e) =>
-                  setForm({ ...form, costo_usd_unit: e.target.value })
+            <button
+              className={showForm ? "btn-secondary" : "btn-primary"}
+              onClick={() => {
+                if (showForm && editingId == null) {
+                  resetForm();
+                } else {
+                  setEditingId(null);
+                  setForm(EMPTY_FORM);
+                  setShowForm(true);
                 }
-              />
-            </div>
-            <div className="md:col-span-2">
-              <div className="label mb-1">Exchange / wallet</div>
-              <input
-                className="input"
-                placeholder="Binance"
-                value={form.exchange}
-                onChange={(e) => setForm({ ...form, exchange: e.target.value })}
-              />
-            </div>
-            <div className="md:col-span-6">
-              <div className="label mb-1">Notas</div>
-              <input
-                className="input"
-                placeholder="Opcional"
-                value={form.notas}
-                onChange={(e) => setForm({ ...form, notas: e.target.value })}
-              />
-            </div>
-            <div className="md:col-span-6 flex gap-2 justify-end">
-              <button type="button" className="btn-secondary" onClick={resetForm}>
-                Cancelar
-              </button>
-              <button type="submit" className="btn-primary" disabled={saving}>
-                {saving
-                  ? "Guardando…"
-                  : editingId != null
-                    ? "Guardar cambios"
-                    : "Agregar"}
-              </button>
-            </div>
-          </form>
-        )}
+              }}
+            >
+              {showForm && editingId == null ? (
+                "Cerrar"
+              ) : (
+                <>
+                  <IconPlus />
+                  Agregar tenencia
+                </>
+              )}
+            </button>
+          </div>
 
-        {holdings.isLoading ? (
-          <LoadingSpinner />
-        ) : tableRows.length === 0 ? (
-          <div className="text-sm text-textMuted text-center py-6">
-            Todavía no cargaste tenencias. Tocá "+ Agregar tenencia".
-          </div>
-        ) : (
-          <div className="overflow-x-auto -mx-4">
-            <table className="w-full text-sm">
-              <thead className="bg-surfaceAlt text-textMuted text-xs uppercase">
-                <tr>
-                  <th
-                    className="px-3 py-2 text-left cursor-pointer select-none hover:text-text"
-                    onClick={() => toggleSort("symbol")}
-                  >
-                    Símbolo{sortIndicator("symbol")}
-                  </th>
-                  <th
-                    className="px-3 py-2 text-right cursor-pointer select-none hover:text-text"
-                    onClick={() => toggleSort("cantidad")}
-                  >
-                    Cantidad{sortIndicator("cantidad")}
-                  </th>
-                  <th
-                    className="px-3 py-2 text-right cursor-pointer select-none hover:text-text"
-                    onClick={() => toggleSort("price_usd")}
-                  >
-                    Precio{sortIndicator("price_usd")}
-                  </th>
-                  <th
-                    className="px-3 py-2 text-right cursor-pointer select-none hover:text-text"
-                    onClick={() => toggleSort("change_24h_pct")}
-                  >
-                    24h{sortIndicator("change_24h_pct")}
-                  </th>
-                  <th
-                    className="px-3 py-2 text-right cursor-pointer select-none hover:text-text"
-                    onClick={() => toggleSort("change_7d_pct")}
-                  >
-                    7d{sortIndicator("change_7d_pct")}
-                  </th>
-                  <th
-                    className="px-3 py-2 text-right cursor-pointer select-none hover:text-text"
-                    onClick={() => toggleSort("value_usd")}
-                  >
-                    Valor{sortIndicator("value_usd")}
-                  </th>
-                  <th
-                    className="px-3 py-2 text-right cursor-pointer select-none hover:text-text"
-                    onClick={() => toggleSort("costo_total_usd")}
-                  >
-                    Costo{sortIndicator("costo_total_usd")}
-                  </th>
-                  <th
-                    className="px-3 py-2 text-right cursor-pointer select-none hover:text-text"
-                    onClick={() => toggleSort("pnl_usd")}
-                  >
-                    P&L{sortIndicator("pnl_usd")}
-                  </th>
-                  <th
-                    className="px-3 py-2 text-right cursor-pointer select-none hover:text-text"
-                    onClick={() => toggleSort("pct_portfolio")}
-                  >
-                    % Cart.{sortIndicator("pct_portfolio")}
-                  </th>
-                  <th className="px-3 py-2 text-left">Exchange</th>
-                  <th className="px-3 py-2 text-right">Acciones</th>
-                </tr>
-              </thead>
-              <tbody>
-                {tableRows.map((it) => {
-                  const price = currency === "USD" ? it.price_usd : it.price_ars;
-                  const value = currency === "USD" ? it.value_usd : it.value_ars;
-                  const cost =
-                    it.costo_total_usd != null
-                      ? currency === "USD"
-                        ? it.costo_total_usd
-                        : it.costo_total_usd * (r?.ars_rate || 0)
-                      : null;
-                  const pnl =
-                    it.pnl_usd != null
-                      ? currency === "USD"
-                        ? it.pnl_usd
-                        : it.pnl_usd * (r?.ars_rate || 0)
-                      : null;
-                  return (
-                    <tr
-                      key={it.id}
-                      className="border-t border-border hover:bg-surfaceAlt/50"
-                    >
-                      <td className="px-3 py-2">
-                        {cmcUrl(it.coingecko_id) ? (
-                          <a
-                            href={cmcUrl(it.coingecko_id)}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="font-medium hover:text-accent hover:underline"
-                          >
-                            {it.symbol}
-                          </a>
-                        ) : (
-                          <div className="font-medium">{it.symbol}</div>
-                        )}
-                        <div className="text-xs text-textMuted">
-                          {it.name || "—"}
-                        </div>
-                      </td>
-                      <td className="px-3 py-2 text-right tabular-nums">
-                        {formatNumber(it.cantidad)}
-                      </td>
-                      <td className="px-3 py-2 text-right tabular-nums">
-                        {price != null ? fmt(price) : "—"}
-                      </td>
-                      <td className="px-3 py-2 text-right tabular-nums">
-                        {it.change_24h_pct != null ? (
-                          <span
-                            className={
-                              it.change_24h_pct >= 0
-                                ? "text-success"
-                                : "text-danger"
-                            }
-                          >
-                            {it.change_24h_pct >= 0 ? "+" : ""}
-                            {it.change_24h_pct.toFixed(2)}%
-                          </span>
-                        ) : (
-                          "—"
-                        )}
-                      </td>
-                      <td className="px-3 py-2 text-right tabular-nums">
-                        {it.change_7d_pct != null ? (
-                          <span
-                            className={
-                              it.change_7d_pct >= 0
-                                ? "text-success"
-                                : "text-danger"
-                            }
-                          >
-                            {it.change_7d_pct >= 0 ? "+" : ""}
-                            {it.change_7d_pct.toFixed(2)}%
-                          </span>
-                        ) : (
-                          "—"
-                        )}
-                      </td>
-                      <td className="px-3 py-2 text-right tabular-nums">
-                        {value != null ? fmt(value) : "—"}
-                      </td>
-                      <td className="px-3 py-2 text-right tabular-nums">
-                        {cost != null ? fmt(cost) : "—"}
-                      </td>
-                      <td className="px-3 py-2 text-right tabular-nums">
-                        {pnl != null ? (
-                          <span
-                            className={pnl >= 0 ? "text-success" : "text-danger"}
-                          >
-                            {fmt(pnl)}
-                            {it.pnl_pct != null && (
-                              <div className="text-xs">
-                                {it.pnl_pct >= 0 ? "+" : ""}
-                                {it.pnl_pct.toFixed(2)}%
-                              </div>
-                            )}
-                          </span>
-                        ) : (
-                          "—"
-                        )}
-                      </td>
-                      <td className="px-3 py-2 text-right tabular-nums">
-                        {it.value_usd
-                          ? `${it.pct_portfolio.toFixed(1)}%`
-                          : "—"}
-                      </td>
-                      <td className="px-3 py-2 text-textMuted">
-                        {it.exchange || "—"}
-                      </td>
-                      <td className="px-3 py-2 text-right whitespace-nowrap">
-                        <button
-                          className="text-warn hover:underline mr-3 disabled:opacity-50"
-                          disabled={!(it.cantidad > 0)}
-                          onClick={() => setSellTarget(it)}
-                        >
-                          Vender
-                        </button>
-                        <button
-                          className="text-accent hover:underline mr-3"
-                          onClick={() =>
-                            startEdit(
-                              (holdings.data || []).find((h) => h.id === it.id) ||
-                                it,
-                            )
-                          }
-                        >
-                          Editar
-                        </button>
-                        <button
-                          className="text-danger hover:underline disabled:opacity-50"
-                          disabled={deleteM.isPending}
-                          onClick={() => {
-                            if (confirm(`¿Eliminar ${it.symbol}?`))
-                              deleteM.mutate(it.id);
-                          }}
-                        >
-                          Eliminar
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
+          {showForm && (
+            <form
+              onSubmit={handleSubmit}
+              className="grid grid-cols-1 md:grid-cols-6 gap-4 border-t border-border p-5"
+            >
+              <div className="md:col-span-6 section-title">
+                {editingId != null ? "Editar tenencia" : "Nueva tenencia"}
+              </div>
+              <div className="md:col-span-3">
+                <div className="label mb-1.5">Buscar en CoinGecko</div>
+                <CoinPicker onPick={handlePick} />
+                {form.coingecko_id && (
+                  <div className="text-xs text-textMuted mt-1.5">
+                    ID: <code className="font-mono text-textSecondary">{form.coingecko_id}</code>
+                  </div>
+                )}
+              </div>
+              <div className="md:col-span-1">
+                <div className="label mb-1.5">Símbolo *</div>
+                <input
+                  className="input uppercase"
+                  placeholder="BTC"
+                  value={form.symbol}
+                  onChange={(e) => setForm({ ...form, symbol: e.target.value })}
+                  required
+                />
+              </div>
+              <div className="md:col-span-2">
+                <div className="label mb-1.5">Nombre</div>
+                <input
+                  className="input"
+                  placeholder="Bitcoin"
+                  value={form.name}
+                  onChange={(e) => setForm({ ...form, name: e.target.value })}
+                />
+              </div>
+              <div className="md:col-span-2">
+                <div className="label mb-1.5">Cantidad *</div>
+                <input
+                  className="input num"
+                  type="number"
+                  step="any"
+                  min="0"
+                  placeholder="0.5"
+                  value={form.cantidad}
+                  onChange={(e) => setForm({ ...form, cantidad: e.target.value })}
+                  required
+                />
+              </div>
+              <div className="md:col-span-2">
+                <div className="label mb-1.5">Costo unitario (USD)</div>
+                <input
+                  className="input num"
+                  type="number"
+                  step="any"
+                  min="0"
+                  placeholder="65000"
+                  value={form.costo_usd_unit}
+                  onChange={(e) =>
+                    setForm({ ...form, costo_usd_unit: e.target.value })
+                  }
+                />
+              </div>
+              <div className="md:col-span-2">
+                <div className="label mb-1.5">Exchange o wallet</div>
+                <input
+                  className="input"
+                  placeholder="Binance"
+                  value={form.exchange}
+                  onChange={(e) => setForm({ ...form, exchange: e.target.value })}
+                />
+              </div>
+              <div className="md:col-span-6">
+                <div className="label mb-1.5">Notas</div>
+                <input
+                  className="input"
+                  placeholder="Opcional"
+                  value={form.notas}
+                  onChange={(e) => setForm({ ...form, notas: e.target.value })}
+                />
+              </div>
+              <div className="md:col-span-6 flex gap-2 justify-end">
+                <button type="button" className="btn-secondary" onClick={resetForm}>
+                  Cancelar
+                </button>
+                <button type="submit" className="btn-primary" disabled={saving}>
+                  {saving
+                    ? "Guardando…"
+                    : editingId != null
+                      ? "Guardar cambios"
+                      : "Agregar"}
+                </button>
+              </div>
+            </form>
+          )}
+
+          {holdings.isLoading ? (
+            <div className="border-t border-border px-5">
+              <LoadingSpinner />
+            </div>
+          ) : tableRows.length === 0 ? (
+            <div className="border-t border-border px-5 py-12 text-center text-sm text-textMuted">
+              Todavía no cargaste tenencias. Tocá "Agregar tenencia".
+            </div>
+          ) : (
+            <div className="overflow-x-auto border-t border-border">
+              <table className="w-full text-[13px]">
+                <thead>
+                  <tr className="border-b border-border">
+                    {sortTh("symbol", "Símbolo", "left")}
+                    {sortTh("cantidad", "Cantidad")}
+                    {sortTh("price_usd", "Precio")}
+                    {sortTh("change_24h_pct", "24 h")}
+                    {sortTh("change_7d_pct", "7 d")}
+                    {sortTh("value_usd", "Valor")}
+                    {sortTh("costo_total_usd", "Costo")}
+                    {sortTh("pnl_usd", "P&L")}
+                    {sortTh("pct_portfolio", "% cartera")}
+                    <th className={TH}>Exchange</th>
+                    <th className={`${TH} text-right`}>
+                      <span className="sr-only">Acciones</span>
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {tableRows.map((it) => {
+                    const price = currency === "USD" ? it.price_usd : it.price_ars;
+                    const value = currency === "USD" ? it.value_usd : it.value_ars;
+                    const cost =
+                      it.costo_total_usd != null
+                        ? currency === "USD"
+                          ? it.costo_total_usd
+                          : it.costo_total_usd * (r?.ars_rate || 0)
+                        : null;
+                    const pnl =
+                      it.pnl_usd != null
+                        ? currency === "USD"
+                          ? it.pnl_usd
+                          : it.pnl_usd * (r?.ars_rate || 0)
+                        : null;
+                    return (
+                      <tr key={it.id} className={TR}>
+                        <td className={TD}>
+                          {cmcUrl(it.coingecko_id) ? (
+                            <a
+                              href={cmcUrl(it.coingecko_id)}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="font-medium text-text underline-offset-2 hover:underline"
+                              title="Ver en CoinMarketCap"
+                            >
+                              {it.symbol}
+                            </a>
+                          ) : (
+                            <div className="font-medium text-text">{it.symbol}</div>
+                          )}
+                          <div className="text-xs text-textMuted">
+                            {it.name || "—"}
+                          </div>
+                        </td>
+                        <td className={TD_NUM}>{formatNumber(it.cantidad)}</td>
+                        <td className={TD_NUM}>{price != null ? fmt(price) : "—"}</td>
+                        <td className={TD_NUM}>
+                          <Delta value={it.change_24h_pct} />
+                        </td>
+                        <td className={TD_NUM}>
+                          <Delta value={it.change_7d_pct} />
+                        </td>
+                        <td className={`${TD_NUM} text-text`}>
+                          {value != null ? fmt(value) : "—"}
+                        </td>
+                        <td className={TD_NUM}>{cost != null ? fmt(cost) : "—"}</td>
+                        <td className={TD_NUM}>
+                          {pnl != null ? (
+                            <>
+                              <div className={toneClass(pnl)}>{signedMoney(fmt, pnl)}</div>
+                              {it.pnl_pct != null && (
+                                <Delta value={it.pnl_pct} className="text-xs" />
+                              )}
+                            </>
+                          ) : (
+                            <span className="text-textMuted">—</span>
+                          )}
+                        </td>
+                        <td className={`${TD_NUM} text-textSecondary`}>
+                          {it.value_usd
+                            ? `${it.pct_portfolio.toFixed(1).replace(".", ",")}%`
+                            : "—"}
+                        </td>
+                        <td className={`${TD} text-textMuted`}>
+                          {it.exchange || "—"}
+                        </td>
+                        <td className={`${TD} text-right`}>
+                          <div className="inline-flex items-center gap-3">
+                            <button
+                              className={ROW_ACTION}
+                              disabled={!(it.cantidad > 0)}
+                              onClick={() => setSellTarget(it)}
+                            >
+                              Vender
+                            </button>
+                            <button
+                              className={ROW_ACTION}
+                              onClick={() =>
+                                startEdit(
+                                  (holdings.data || []).find((h) => h.id === it.id) ||
+                                    it,
+                                )
+                              }
+                            >
+                              Editar
+                            </button>
+                            <button
+                              className={ROW_ACTION_DANGER}
+                              disabled={deleteM.isPending}
+                              onClick={() => {
+                                if (confirm(`¿Eliminar ${it.symbol}?`))
+                                  deleteM.mutate(it.id);
+                              }}
+                            >
+                              Eliminar
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
+
+        <SalesHistory
+          sales={sales.data}
+          loading={sales.isLoading}
+          currency={currency}
+          fmt={fmt}
+          arsRate={r?.ars_rate}
+          onDelete={(id) => deleteSaleM.mutate(id)}
+          deleting={deleteSaleM.isPending}
+        />
       </div>
-
-      <SalesHistory
-        sales={sales.data}
-        loading={sales.isLoading}
-        currency={currency}
-        fmt={fmt}
-        arsRate={r?.ars_rate}
-        onDelete={(id) => deleteSaleM.mutate(id)}
-        deleting={deleteSaleM.isPending}
-      />
 
       {sellTarget && (
         <SellModal
@@ -1042,36 +1103,40 @@ function SalesHistory({ sales, loading, currency, fmt, arsRate, onDelete, deleti
     currency === "USD" ? sales.total_pnl_usd : sales.total_pnl_ars;
 
   return (
-    <div className="card p-4 space-y-3">
-      <div className="flex flex-wrap items-center gap-2">
-        <div className="label">Ventas realizadas</div>
-        <div className="ml-auto text-sm">
-          <span className="text-textMuted mr-2">P&L realizado:</span>
-          <span
-            className={`font-medium tabular-nums ${
-              (totalPnl || 0) >= 0 ? "text-success" : "text-danger"
-            }`}
-          >
-            {fmt(totalPnl || 0)}
+    <section className="card min-w-0">
+      <div className="flex flex-wrap items-start justify-between gap-3 p-5 pb-4">
+        <div className="min-w-0">
+          <h2 className="section-title">Ventas realizadas</h2>
+          <div className="text-xs text-textMuted mt-0.5">
+            Convertidas con la cotización del día de cada venta
+          </div>
+        </div>
+        <div className="text-right">
+          <div className="label">P&L realizado</div>
+          <div className="mt-0.5 text-sm font-medium num">
+            <span className={toneClass(totalPnl)}>{signedMoney(fmt, totalPnl || 0)}</span>
             {sales.total_pnl_pct != null && (
-              <> ({sales.total_pnl_pct >= 0 ? "+" : ""}
-              {sales.total_pnl_pct.toFixed(2)}%)</>
+              <span className="ml-2 font-normal">
+                <Delta value={sales.total_pnl_pct} />
+              </span>
             )}
-          </span>
+          </div>
         </div>
       </div>
-      <div className="overflow-x-auto -mx-4">
-        <table className="w-full text-sm">
-          <thead className="bg-surfaceAlt text-textMuted text-xs uppercase">
-            <tr>
-              <th className="px-3 py-2 text-left">Fecha</th>
-              <th className="px-3 py-2 text-left">Símbolo</th>
-              <th className="px-3 py-2 text-right">Cantidad</th>
-              <th className="px-3 py-2 text-right">Precio venta</th>
-              <th className="px-3 py-2 text-right">Ingreso</th>
-              <th className="px-3 py-2 text-right">Costo</th>
-              <th className="px-3 py-2 text-right">P&L</th>
-              <th className="px-3 py-2 text-right">Acciones</th>
+      <div className="overflow-x-auto border-t border-border">
+        <table className="w-full text-[13px]">
+          <thead>
+            <tr className="border-b border-border">
+              <th className={TH}>Fecha</th>
+              <th className={TH}>Símbolo</th>
+              <th className={`${TH} text-right`}>Cantidad</th>
+              <th className={`${TH} text-right`}>Precio de venta</th>
+              <th className={`${TH} text-right`}>Ingreso</th>
+              <th className={`${TH} text-right`}>Costo</th>
+              <th className={`${TH} text-right`}>P&L</th>
+              <th className={`${TH} text-right`}>
+                <span className="sr-only">Acciones</span>
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -1081,46 +1146,33 @@ function SalesHistory({ sales, loading, currency, fmt, arsRate, onDelete, deleti
               const pnl = conv(s.pnl_usd, s.dolar_rate);
               const price = conv(s.price_usd, s.dolar_rate);
               return (
-                <tr key={s.id} className="border-t border-border hover:bg-surfaceAlt/50">
-                  <td className="px-3 py-2 text-textMuted whitespace-nowrap">
-                    {formatDate(s.sold_at)}
-                  </td>
-                  <td className="px-3 py-2">
-                    <div className="font-medium">{s.symbol}</div>
+                <tr key={s.id} className={TR}>
+                  <td className={`${TD} text-textMuted`}>{formatDate(s.sold_at)}</td>
+                  <td className={TD}>
+                    <div className="font-medium text-text">{s.symbol}</div>
                     {s.notas && (
                       <div className="text-xs text-textMuted">{s.notas}</div>
                     )}
                   </td>
-                  <td className="px-3 py-2 text-right tabular-nums">
-                    {formatNumber(s.cantidad)}
-                  </td>
-                  <td className="px-3 py-2 text-right tabular-nums">
-                    {price != null ? fmt(price) : "—"}
-                  </td>
-                  <td className="px-3 py-2 text-right tabular-nums">
-                    {proceeds != null ? fmt(proceeds) : "—"}
-                  </td>
-                  <td className="px-3 py-2 text-right tabular-nums">
-                    {cost != null ? fmt(cost) : "—"}
-                  </td>
-                  <td className="px-3 py-2 text-right tabular-nums">
+                  <td className={TD_NUM}>{formatNumber(s.cantidad)}</td>
+                  <td className={TD_NUM}>{price != null ? fmt(price) : "—"}</td>
+                  <td className={TD_NUM}>{proceeds != null ? fmt(proceeds) : "—"}</td>
+                  <td className={TD_NUM}>{cost != null ? fmt(cost) : "—"}</td>
+                  <td className={TD_NUM}>
                     {pnl != null ? (
-                      <span className={pnl >= 0 ? "text-success" : "text-danger"}>
-                        {fmt(pnl)}
+                      <>
+                        <div className={toneClass(pnl)}>{signedMoney(fmt, pnl)}</div>
                         {s.pnl_pct != null && (
-                          <div className="text-xs">
-                            {s.pnl_pct >= 0 ? "+" : ""}
-                            {s.pnl_pct.toFixed(2)}%
-                          </div>
+                          <Delta value={s.pnl_pct} className="text-xs" />
                         )}
-                      </span>
+                      </>
                     ) : (
-                      "—"
+                      <span className="text-textMuted">—</span>
                     )}
                   </td>
-                  <td className="px-3 py-2 text-right">
+                  <td className={`${TD} text-right`}>
                     <button
-                      className="text-danger hover:underline disabled:opacity-50"
+                      className={ROW_ACTION_DANGER}
                       disabled={deleting}
                       onClick={() => {
                         if (confirm(`¿Borrar este registro de venta de ${s.symbol}? No restaura la tenencia.`))
@@ -1136,6 +1188,6 @@ function SalesHistory({ sales, loading, currency, fmt, arsRate, onDelete, deleti
           </tbody>
         </table>
       </div>
-    </div>
+    </section>
   );
 }

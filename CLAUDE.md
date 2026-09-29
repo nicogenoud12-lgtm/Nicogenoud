@@ -168,6 +168,15 @@ Cubre:
 
 **Antes de pushear cambios al classifier o a pnl.py, correr los tests.**
 
+## 🎨 Sistema visual (frontend)
+
+Estética profesional y minimalista. Antes de tocar UI, respetar:
+- **Tokens** en `frontend/src/index.css` (`--c-*`, claro y oscuro): neutros cálidos, un solo acento azul, `success`/`danger` sólo para subas y bajas. Bordes hairline sólidos, sin sombras, sin gradientes decorativos.
+- **Clases**: `.card` + `.card-pad`, `.page-title`, `.section-title`, `.label` (sentence case, nunca `uppercase`), `.btn-primary` (monocromo, uno por vista), `.btn-secondary`, `.btn-ghost`, `.input`, `.segmented`, `.notice` (avisos neutros), `.num` (tabular-nums en columnas).
+- **Componentes**: `PageHeader`, `Card`, `KpiCard` (`hero` = un solo número destacado por vista), `Delta` (variación con signo explícito), `DataTable`.
+- **Gráficos** (`components/charts/chartTheme.js`): paleta categórica validada para daltonismo; el color sigue a la entidad (`colorFor`), nunca al ranking; más de 7 porciones → "Otros". Líneas de 2px, grilla hairline sólida, barras finas con punta redondeada. Los charts renderizan su propio card.
+- **Sin emojis** en la UI (íconos SVG inline con `stroke="currentColor"`).
+
 ## 📋 Convenciones / reglas
 
 - **Idioma**: comentarios en código y mensajes UI en español rioplatense (el usuario habla español, sin embargo el código y nombres internos están en inglés cuando son convención del framework — e.g. `event_kind`, `currency_kind`).

@@ -27,35 +27,41 @@ export default function LoginScreen() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center px-4">
-      <div className="card p-8 w-full max-w-md">
-        <h1 className="text-2xl font-semibold mb-1">Investment Dashboard</h1>
-        <p className="text-textMuted text-sm mb-6">Iniciar sesión</p>
+    <div className="min-h-screen flex items-center justify-center px-4 bg-bg">
+      <div className="w-full max-w-sm">
+        <div className="flex items-center gap-2.5 mb-8">
+          <span className="h-6 w-6 rounded-md bg-text grid place-items-center" aria-hidden>
+            <span className="h-2.5 w-2.5 rounded-sm bg-bg" />
+          </span>
+          <span className="text-base font-semibold tracking-tight">Cartera</span>
+        </div>
+        <h1 className="text-xl font-semibold tracking-tight">Iniciar sesión</h1>
+        <p className="text-sm text-textMuted mt-1 mb-6">Ingresá con tu usuario del dashboard.</p>
         <form onSubmit={submit} className="space-y-4">
-          <div>
-            <label className="label">Usuario</label>
+          <label className="block">
+            <span className="label">Usuario</span>
             <input
-              className="input mt-1"
+              className="input mt-1.5"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               autoFocus
               autoComplete="username"
               required
             />
-          </div>
-          <div>
-            <label className="label">Contraseña</label>
+          </label>
+          <label className="block">
+            <span className="label">Contraseña</span>
             <input
-              className="input mt-1"
+              className="input mt-1.5"
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               autoComplete="current-password"
               required
             />
-          </div>
+          </label>
           {error && (
-            <div className="text-sm text-danger bg-danger/10 border border-danger/30 rounded-lg px-3 py-2">
+            <div className="text-sm text-danger" role="alert">
               {error}
             </div>
           )}

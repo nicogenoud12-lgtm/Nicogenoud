@@ -4,10 +4,22 @@ import { listOperations, operationsSummary, syncOperations } from "../api/operat
 import DataTable from "../components/DataTable.jsx";
 import KpiCard from "../components/KpiCard.jsx";
 import LoadingSpinner from "../components/LoadingSpinner.jsx";
+import PageHeader from "../components/PageHeader.jsx";
 import { formatARS, formatDate, formatNumber, formatUSD } from "../utils/format";
 import { useUiStore } from "../store/uiStore";
 
 const KINDS = ["COMPRA", "VENTA", "SUSCRIPCION", "RESCATE", "RENTA", "AMORTIZACION", "DIVIDENDO"];
+const KIND_LABEL = {
+  COMPRA: "Compra",
+  VENTA: "Venta",
+  SUSCRIPCION: "Suscripción",
+  RESCATE: "Rescate",
+  RENTA: "Renta",
+  AMORTIZACION: "Amortización",
+  DIVIDENDO: "Dividendo",
+  OTRO: "Otro",
+};
+const CURRENCY_LABEL = { ARS: "ARS", USD_MEP: "USD MEP", USD_CABLE: "USD Cable" };
 
 export default function OperacionesScreen() {
   const currency = useUiStore((s) => s.currency);
@@ -64,7 +76,7 @@ export default function OperacionesScreen() {
       monto_usd: formatUSD(totalUSD) + (sinUsd ? ` (${sinUsd} sin MEP)` : ""),
     };
   }, [rows]);
-  const fxSub = "convertido a MEP del día";
+  const fxSub = "Al MEP de cada día";
 
   const columns = [
     {
@@ -78,22 +90,15 @@ export default function OperacionesScreen() {
       key: "event_kind",
       label: "Tipo",
       sortable: true,
-      render: (r) => (
-        <span
-          className={`chip ${
-            r.event_kind === "COMPRA"
-              ? "border-accent/30 text-accent"
-              : r.event_kind === "VENTA"
-                ? "border-success/30 text-success"
-                : ""
-          }`}
-        >
-          {r.event_kind}
-        </span>
-      ),
+      render: (r) => <span className="text-textSecondary">{KIND_LABEL[r.event_kind] || r.event_kind}</span>,
     },
-    { key: "simbolo", label: "Símbolo", sortable: true },
-    { key: "descripcion", label: "Descripción" },
+    {
+      key: "simbolo",
+      label: "Símbolo",
+      sortable: true,
+      render: (r) => <span className="font-medium text-text">{r.simbolo}</span>,
+    },
+    { key: "descripcion", label: "Descripción", className: "text-textMuted max-w-[240px] truncate" },
     {
       key: "cantidad",
       label: "Cant.",
@@ -112,13 +117,13 @@ export default function OperacionesScreen() {
     },
     {
       key: "monto_ars",
-      label: "Monto $",
+      label: "Monto ARS",
       align: "right",
       sortable: true,
       value: (r) => Number(r.monto_ars ?? 0),
       render: (r) =>
         r.monto_ars != null ? (
-          <span className={r.currency_kind === "ARS" ? "text-white" : "text-textMuted text-xs"}>
+          <span className={r.currency_kind === "ARS" ? "text-text" : "text-textMuted"}>
             {formatARS(r.monto_ars)}
           </span>
         ) : (
@@ -127,13 +132,13 @@ export default function OperacionesScreen() {
     },
     {
       key: "monto_usd",
-      label: "Monto U$D",
+      label: "Monto USD",
       align: "right",
       sortable: true,
       value: (r) => Number(r.monto_usd ?? 0),
       render: (r) =>
         r.monto_usd != null ? (
-          <span className={r.currency_kind !== "ARS" ? "text-white" : "text-textMuted text-xs"}>
+          <span className={r.currency_kind !== "ARS" ? "text-text" : "text-textMuted"}>
             {formatUSD(r.monto_usd)}
           </span>
         ) : (
@@ -144,88 +149,109 @@ export default function OperacionesScreen() {
       key: "currency_kind",
       label: "Moneda",
       sortable: true,
-      render: (r) => <span className="text-xs text-textMuted">{r.currency_kind}</span>,
+      render: (r) => <span className="text-textMuted">{CURRENCY_LABEL[r.currency_kind] || r.currency_kind}</span>,
     },
   ];
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-center gap-3">
-        <h1 className="text-xl font-semibold">Operaciones</h1>
-        <select
-          className="input w-auto mr-auto"
-          value={year}
-          onChange={(e) => setYear(Number(e.target.value))}
-        >
-          {years.map((y) => (
-            <option key={y} value={y}>
-              {y}
-            </option>
-          ))}
-        </select>
-        <input
-          className="input max-w-xs"
-          placeholder="Filtrar por símbolo"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-        />
-        <button
-          className="btn-primary"
-          onClick={() => sync.mutate()}
-          disabled={sync.isPending}
-        >
-          {sync.isPending ? "Sincronizando…" : "↻ Sincronizar"}
-        </button>
-      </div>
+    <div>
+      <PageHeader
+        title="Operaciones"
+        subtitle={`${rows.length} operaciones en ${year} · montos convertidos al MEP de cada día`}
+        actions={
+          <>
+            <select
+              className="input w-auto"
+              value={year}
+              onChange={(e) => setYear(Number(e.target.value))}
+              aria-label="Año"
+            >
+              {years.map((y) => (
+                <option key={y} value={y}>
+                  {y}
+                </option>
+              ))}
+            </select>
+            <input
+              className="input w-52"
+              placeholder="Filtrar por símbolo"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+            <button className="btn-primary" onClick={() => sync.mutate()} disabled={sync.isPending}>
+              {sync.isPending ? "Sincronizando…" : "Sincronizar"}
+            </button>
+          </>
+        }
+      />
 
-      {s.fx_missing_count > 0 && (
-        <div className="text-xs text-amber-400 bg-amber-400/10 border border-amber-400/20 rounded px-3 py-1.5">
-          ⚠ {s.fx_missing_count} operación{s.fx_missing_count !== 1 ? "es" : ""} sin tasa MEP histórica — sincronizá para completar
+      <div className="space-y-4">
+        {s.fx_missing_count > 0 && (
+          <div className="notice" role="status">
+            <span className="text-warn font-medium">Atención</span>
+            <span>
+              {s.fx_missing_count} operación{s.fx_missing_count !== 1 ? "es" : ""} sin cotización MEP
+              histórica. Sincronizá para completarlas.
+            </span>
+          </div>
+        )}
+
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+          <KpiCard
+            label="Compras"
+            value={fmt(currency === "USD" ? s.total_compras_usd : s.total_compras_ars)}
+            sub={fxSub}
+          />
+          <KpiCard
+            label="Ventas"
+            value={fmt(currency === "USD" ? s.total_ventas_usd : s.total_ventas_ars)}
+            sub={fxSub}
+          />
+          <KpiCard
+            label="Renta"
+            value={fmt(currency === "USD" ? s.total_renta_usd : s.total_renta_ars)}
+            sub={fxSub}
+          />
+          <KpiCard
+            label="Amortizaciones"
+            value={fmt(currency === "USD" ? s.total_amortizaciones_usd : s.total_amortizaciones_ars)}
+            sub={fxSub}
+          />
+          <KpiCard
+            label="Dividendos"
+            value={fmt(currency === "USD" ? s.total_dividendos_usd : s.total_dividendos_ars)}
+            sub={fxSub}
+          />
         </div>
-      )}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
-        <KpiCard
-          label="Compras"
-          value={fmt(currency === "USD" ? s.total_compras_usd : s.total_compras_ars)}
-          sub={fxSub}
-        />
-        <KpiCard
-          label="Ventas"
-          value={fmt(currency === "USD" ? s.total_ventas_usd : s.total_ventas_ars)}
-          sub={fxSub}
-        />
-        <KpiCard
-          label="Renta"
-          value={fmt(currency === "USD" ? s.total_renta_usd : s.total_renta_ars)}
-          sub={fxSub}
-        />
-        <KpiCard
-          label="Amortizaciones"
-          value={fmt(currency === "USD" ? s.total_amortizaciones_usd : s.total_amortizaciones_ars)}
-          sub={fxSub}
-        />
-        <KpiCard
-          label="Dividendos"
-          value={fmt(currency === "USD" ? s.total_dividendos_usd : s.total_dividendos_ars)}
-          sub={fxSub}
-        />
-      </div>
 
-      <div className="flex flex-wrap gap-2">
-        {KINDS.map((k) => (
-          <button
-            key={k}
-            onClick={() => toggleKind(k)}
-            className={`chip ${
-              kinds.includes(k) ? "bg-accent text-white border-accent" : "cursor-pointer"
-            }`}
-          >
-            {k}
-          </button>
-        ))}
-      </div>
+        <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Filtrar por tipo">
+          {KINDS.map((k) => (
+            <button
+              key={k}
+              onClick={() => toggleKind(k)}
+              aria-pressed={kinds.includes(k)}
+              className={`h-7 px-2.5 rounded-md border text-xs font-medium transition-colors ${
+                kinds.includes(k)
+                  ? "border-text bg-text text-bg"
+                  : "border-border text-textMuted hover:text-text"
+              }`}
+            >
+              {KIND_LABEL[k]}
+            </button>
+          ))}
+          {kinds.length > 0 && (
+            <button onClick={() => setKinds([])} className="btn-ghost h-7 px-2 text-xs">
+              Limpiar
+            </button>
+          )}
+        </div>
 
-      {ops.isLoading ? <LoadingSpinner /> : <DataTable columns={columns} rows={rows} footer={tableFooter} />}
+        {ops.isLoading ? (
+          <LoadingSpinner />
+        ) : (
+          <DataTable columns={columns} rows={rows} footer={tableFooter} emptyText="Sin operaciones." />
+        )}
+      </div>
     </div>
   );
 }

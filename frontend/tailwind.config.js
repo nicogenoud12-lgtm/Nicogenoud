@@ -10,6 +10,7 @@ export default {
         surfaceAlt: "rgb(var(--c-surface-alt) / <alpha-value>)",
         border: "rgb(var(--c-border) / <alpha-value>)",
         text: "rgb(var(--c-text) / <alpha-value>)",
+        textSecondary: "rgb(var(--c-text-secondary) / <alpha-value>)",
         textMuted: "rgb(var(--c-text-muted) / <alpha-value>)",
         accent: "rgb(var(--c-accent) / <alpha-value>)",
         accentSoft: "rgb(var(--c-accent-soft) / <alpha-value>)",

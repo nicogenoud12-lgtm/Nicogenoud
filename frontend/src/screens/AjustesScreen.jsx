@@ -4,9 +4,32 @@ import { iolConnect, iolDisconnect, iolRefresh, iolStatus } from "../api/iol";
 import { getSettings, updateSettings } from "../api/settings";
 import { runSnapshotNow } from "../api/snapshots";
 import LoadingSpinner from "../components/LoadingSpinner.jsx";
+import PageHeader from "../components/PageHeader.jsx";
 import { formatDate } from "../utils/format";
 
 const DOLAR_SOURCES = ["MEP", "CCL", "Blue", "Oficial"];
+
+// Sección de configuración: descripción a la izquierda, controles a la derecha.
+function SettingsSection({ title, description, children }) {
+  return (
+    <section className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-8 py-8 first:pt-0">
+      <div>
+        <h2 className="section-title">{title}</h2>
+        {description && <p className="text-[13px] text-textMuted mt-1 leading-relaxed">{description}</p>}
+      </div>
+      <div className="md:col-span-2 card card-pad space-y-4">{children}</div>
+    </section>
+  );
+}
+
+function Field({ label, children }) {
+  return (
+    <label className="block">
+      <span className="label">{label}</span>
+      <div className="mt-1.5">{children}</div>
+    </label>
+  );
+}
 
 export default function AjustesScreen() {
   const qc = useQueryClient();
@@ -89,174 +112,151 @@ export default function AjustesScreen() {
 
   const st = status.data || {};
   return (
-    <div className="space-y-6 max-w-3xl">
-      <h1 className="text-xl font-semibold">Ajustes</h1>
+    <div className="max-w-4xl">
+      <PageHeader title="Ajustes" subtitle="Conexión con IOL, cotización y tareas programadas" />
 
       {feedback && (
-        <div
-          className={`text-sm rounded-lg px-3 py-2 border ${
-            feedback.type === "ok"
-              ? "bg-success/10 border-success/30 text-success"
-              : "bg-danger/10 border-danger/30 text-danger"
-          }`}
-        >
-          {feedback.text}
+        <div className="notice mb-6" role="status">
+          <span className={`font-medium ${feedback.type === "ok" ? "text-success" : "text-danger"}`}>
+            {feedback.type === "ok" ? "Listo" : "Error"}
+          </span>
+          <span>{feedback.text}</span>
         </div>
       )}
 
-      <section className="card p-5 space-y-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <div className="text-base font-medium">Conexión IOL</div>
-            <div className="text-xs text-textMuted">
-              Tus credenciales se guardan encriptadas (Fernet) en la DB.
+      <div className="divide-hair">
+        <SettingsSection
+          title="Conexión IOL"
+          description="Las credenciales se guardan encriptadas en la base. La sesión se renueva sola cada 12 horas."
+        >
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2 text-sm">
+              <span className={`h-2 w-2 rounded-full ${st.connected ? "bg-success" : "bg-danger"}`} />
+              <span className="font-medium text-text">{st.connected ? "Conectado" : "Desconectado"}</span>
             </div>
+            {st.connected && <span className="text-sm text-textMuted">{st.iol_username}</span>}
           </div>
-          <span
-            className={`chip ${
-              st.connected
-                ? "bg-success/10 text-success border-success/30"
-                : "bg-danger/10 text-danger border-danger/30"
-            }`}
-          >
-            {st.connected ? "Conectado" : "Desconectado"}
-          </span>
-        </div>
 
-        {st.connected ? (
-          <div className="space-y-2 text-sm">
-            <div>
-              <span className="text-textMuted">Usuario IOL:</span>{" "}
-              <span className="font-medium">{st.iol_username}</span>
-            </div>
-            <div className="text-textMuted">
-              Conectado el {formatDate(st.connected_at)} · Access expira{" "}
-              {formatDate(st.access_expires_at)}
-              {st.refresh_expires_at && (
-                <> · Refresh expira {formatDate(st.refresh_expires_at)}</>
-              )}
-              {st.last_keepalive_at && (
-                <> · Keep-alive {formatDate(st.last_keepalive_at)}</>
-              )}
-            </div>
-            {st.last_error && (
-              <div className="text-danger text-xs">Último error: {st.last_error}</div>
-            )}
-            <div className="flex gap-2 pt-2">
-              <button
-                className="btn-secondary"
-                onClick={() => refresh.mutate()}
-                disabled={refresh.isPending}
-              >
-                ↻ Refresh token
-              </button>
-              <button
-                className="btn-danger"
-                onClick={handleDisconnect}
-                disabled={disconnect.isPending}
-              >
-                Desconectar
-              </button>
-            </div>
-          </div>
-        ) : (
-          <form
-            className="space-y-3"
-            onSubmit={(e) => {
-              e.preventDefault();
-              connect.mutate();
-            }}
-          >
-            <div>
-              <label className="label">Usuario IOL</label>
-              <input
-                className="input mt-1"
-                value={iolUsername}
-                onChange={(e) => setIolUsername(e.target.value)}
-                required
-                autoComplete="off"
-              />
-            </div>
-            <div>
-              <label className="label">Contraseña IOL</label>
-              <input
-                className="input mt-1"
-                type="password"
-                value={iolPassword}
-                onChange={(e) => setIolPassword(e.target.value)}
-                required
-                autoComplete="new-password"
-              />
-            </div>
-            <button className="btn-primary" type="submit" disabled={connect.isPending}>
-              {connect.isPending ? "Conectando…" : "Conectar"}
-            </button>
-          </form>
-        )}
-      </section>
-
-      <section className="card p-5 space-y-4">
-        <div className="text-base font-medium">Fuente de dólar</div>
-        <div className="flex flex-wrap gap-2">
-          {DOLAR_SOURCES.map((s) => (
-            <label
-              key={s}
-              className={`chip cursor-pointer ${
-                dolarSource === s ? "bg-accent text-white border-accent" : ""
-              }`}
+          {st.connected ? (
+            <>
+              <dl className="grid grid-cols-2 gap-x-6 gap-y-3 text-[13px]">
+                <div>
+                  <dt className="text-textMuted">Conectado</dt>
+                  <dd className="text-text mt-0.5">{formatDate(st.connected_at)}</dd>
+                </div>
+                <div>
+                  <dt className="text-textMuted">Access token vence</dt>
+                  <dd className="text-text mt-0.5">{formatDate(st.access_expires_at)}</dd>
+                </div>
+                {st.refresh_expires_at && (
+                  <div>
+                    <dt className="text-textMuted">Refresh token vence</dt>
+                    <dd className="text-text mt-0.5">{formatDate(st.refresh_expires_at)}</dd>
+                  </div>
+                )}
+                {st.last_keepalive_at && (
+                  <div>
+                    <dt className="text-textMuted">Último keep-alive</dt>
+                    <dd className="text-text mt-0.5">{formatDate(st.last_keepalive_at)}</dd>
+                  </div>
+                )}
+              </dl>
+              {st.last_error && <div className="text-danger text-xs">Último error: {st.last_error}</div>}
+              <div className="flex gap-2 pt-1">
+                <button className="btn-secondary" onClick={() => refresh.mutate()} disabled={refresh.isPending}>
+                  Renovar token
+                </button>
+                <button className="btn-danger" onClick={handleDisconnect} disabled={disconnect.isPending}>
+                  Desconectar
+                </button>
+              </div>
+            </>
+          ) : (
+            <form
+              className="space-y-4"
+              onSubmit={(e) => {
+                e.preventDefault();
+                connect.mutate();
+              }}
             >
-              <input
-                type="radio"
-                className="hidden"
-                checked={dolarSource === s}
-                onChange={() => setDolarSource(s)}
-              />
-              {s}
-            </label>
-          ))}
-        </div>
-        <p className="text-xs text-textMuted">
-          Se usa para convertir ARS→USD en KPIs y en los snapshots diarios. Fuente:
-          dolarapi.com.
-        </p>
-      </section>
+              <Field label="Usuario IOL">
+                <input
+                  className="input"
+                  value={iolUsername}
+                  onChange={(e) => setIolUsername(e.target.value)}
+                  required
+                  autoComplete="off"
+                />
+              </Field>
+              <Field label="Contraseña IOL">
+                <input
+                  className="input"
+                  type="password"
+                  value={iolPassword}
+                  onChange={(e) => setIolPassword(e.target.value)}
+                  required
+                  autoComplete="new-password"
+                />
+              </Field>
+              <button className="btn-primary" type="submit" disabled={connect.isPending}>
+                {connect.isPending ? "Conectando…" : "Conectar"}
+              </button>
+            </form>
+          )}
+        </SettingsSection>
 
-      <section className="card p-5 space-y-4">
-        <div className="text-base font-medium">Scheduler</div>
-        <label className="flex items-center gap-2">
-          <input
-            type="checkbox"
-            checked={schedulerEnabled}
-            onChange={(e) => setSchedulerEnabled(e.target.checked)}
-          />
-          <span className="text-sm">Habilitado (snapshot + sync operaciones diario)</span>
-        </label>
-        <div>
-          <label className="label">Cron snapshot (formato cron)</label>
-          <input
-            className="input mt-1 max-w-xs"
-            value={snapshotCron}
-            onChange={(e) => setSnapshotCron(e.target.value)}
-            placeholder="55 23 * * *"
-          />
-        </div>
-        <div className="flex gap-2">
-          <button
-            className="btn-primary"
-            onClick={() => saveSettings.mutate()}
-            disabled={saveSettings.isPending}
-          >
-            Guardar
-          </button>
-          <button
-            className="btn-secondary"
-            onClick={() => runSnap.mutate()}
-            disabled={runSnap.isPending}
-          >
-            {runSnap.isPending ? "Generando…" : "Ejecutar snapshot ahora"}
-          </button>
-        </div>
-      </section>
+        <SettingsSection
+          title="Cotización del dólar"
+          description="Se usa para convertir ARS a USD en las KPIs y en los snapshots diarios. Fuente: dolarapi.com."
+        >
+          <div className="segmented" role="radiogroup" aria-label="Fuente de dólar">
+            {DOLAR_SOURCES.map((s) => (
+              <button
+                key={s}
+                type="button"
+                role="radio"
+                aria-checked={dolarSource === s}
+                onClick={() => setDolarSource(s)}
+                className={`segmented-item ${dolarSource === s ? "segmented-item-active" : ""}`}
+              >
+                {s}
+              </button>
+            ))}
+          </div>
+          <div className="text-xs text-textMuted">Se aplica al guardar.</div>
+        </SettingsSection>
+
+        <SettingsSection
+          title="Tareas programadas"
+          description="Snapshot diario de la cartera y sincronización de operaciones con IOL."
+        >
+          <label className="flex items-center gap-2.5 text-sm text-text">
+            <input
+              type="checkbox"
+              className="h-4 w-4 accent-current"
+              checked={schedulerEnabled}
+              onChange={(e) => setSchedulerEnabled(e.target.checked)}
+            />
+            Habilitadas
+          </label>
+          <Field label="Horario del snapshot (formato cron)">
+            <input
+              className="input max-w-xs num"
+              value={snapshotCron}
+              onChange={(e) => setSnapshotCron(e.target.value)}
+              placeholder="55 23 * * *"
+            />
+          </Field>
+          <div className="flex flex-wrap gap-2 pt-1">
+            <button className="btn-primary" onClick={() => saveSettings.mutate()} disabled={saveSettings.isPending}>
+              Guardar cambios
+            </button>
+            <button className="btn-secondary" onClick={() => runSnap.mutate()} disabled={runSnap.isPending}>
+              {runSnap.isPending ? "Generando…" : "Generar snapshot ahora"}
+            </button>
+          </div>
+        </SettingsSection>
+      </div>
     </div>
   );
 }

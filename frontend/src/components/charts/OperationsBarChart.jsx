@@ -1,19 +1,18 @@
-import {
-  Bar,
-  BarChart,
-  CartesianGrid,
-  Cell,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts";
+import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { useUiStore } from "../../store/uiStore";
 import { formatARS, formatUSD } from "../../utils/format";
-import { useChartTokens } from "./chartTheme";
+import { compactNumber, tooltipStyle, useChartTokens } from "./chartTheme";
 import PeriodFilter from "./PeriodFilter";
 
-export default function OperationsBarChart({ data, title = "Resultado por símbolo", valueLabel = "Resultado", period, onPeriodChange }) {
+// Una sola serie (el acento): el color no codifica nada más que "monto".
+export default function OperationsBarChart({
+  data,
+  title = "Resultado por símbolo",
+  subtitle,
+  valueLabel = "Resultado",
+  period,
+  onPeriodChange,
+}) {
   const currency = useUiStore((s) => s.currency);
   const t = useChartTokens();
   const fmt = currency === "USD" ? formatUSD : formatARS;
@@ -25,60 +24,59 @@ export default function OperationsBarChart({ data, title = "Resultado por símbo
     .sort((a, b) => Math.abs(b.pnl) - Math.abs(a.pnl))
     .slice(0, 10);
 
-  const compactFmt = (v) => {
-    const sign = v < 0 ? "-" : "";
-    const abs = Math.abs(v);
-    if (abs >= 1_000_000) return `${sign}${(abs / 1_000_000).toFixed(1)}M`;
-    if (abs >= 1_000) return `${sign}${Math.round(abs / 1_000)}k`;
-    return `${sign}${Math.round(abs)}`;
-  };
-
   return (
-    <div className="card p-4 h-80">
-      <div className="flex items-center justify-between mb-2">
-        <div className="label">{title}</div>
+    <section className="card card-pad flex flex-col h-[22rem]">
+      <div className="flex flex-wrap items-start justify-between gap-3 mb-4">
+        <div className="min-w-0">
+          <h2 className="section-title">{title}</h2>
+          <div className="text-xs text-textMuted mt-0.5">{subtitle || `Top 10 · ${currency}`}</div>
+        </div>
         {onPeriodChange && <PeriodFilter value={period} onChange={onPeriodChange} />}
       </div>
-      <ResponsiveContainer width="100%" height="85%">
-        <BarChart
-          data={series}
-          layout="vertical"
-          margin={{ top: 8, right: 12, left: 4, bottom: 8 }}
-        >
-          <CartesianGrid stroke={t.grid} strokeDasharray="3 3" horizontal={false} />
-          <XAxis
-            type="number"
-            tickFormatter={compactFmt}
-            tick={{ fill: t.axis, fontSize: 10 }}
-            stroke={t.grid}
-            tickCount={4}
-          />
-          <YAxis
-            type="category"
-            dataKey="simbolo"
-            width={56}
-            tick={{ fill: t.axis, fontSize: 11 }}
-            stroke={t.grid}
-          />
-          <Tooltip
-            cursor={{ fill: "transparent" }}
-            wrapperStyle={{ zIndex: 50 }}
-            contentStyle={{
-              background: t.tooltipBg,
-              border: `1px solid ${t.tooltipBorder}`,
-              borderRadius: 8,
-              color: t.text,
-              fontSize: 12,
-            }}
-            formatter={(v) => [fmt(v), valueLabel]}
-          />
-          <Bar dataKey="pnl" name={valueLabel} radius={[0, 4, 4, 0]}>
-            {series.map((s, i) => (
-              <Cell key={i} fill={s.pnl >= 0 ? t.success : t.danger} />
-            ))}
-          </Bar>
-        </BarChart>
-      </ResponsiveContainer>
-    </div>
+      <div className="flex-1 min-h-0">
+        {series.length === 0 ? (
+          <div className="h-full grid place-items-center text-sm text-textMuted">Sin cobros en el período.</div>
+        ) : (
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={series} layout="vertical" margin={{ top: 0, right: 8, left: 0, bottom: 0 }}>
+              <CartesianGrid stroke={t.grid} horizontal={false} />
+              <XAxis
+                type="number"
+                tickFormatter={compactNumber}
+                tick={{ fill: t.axis, fontSize: 11 }}
+                axisLine={false}
+                tickLine={false}
+                tickCount={4}
+              />
+              <YAxis
+                type="category"
+                dataKey="simbolo"
+                width={96}
+                tickFormatter={(v) => String(v).replace(/ (US\$|USD|U\$S)$/, "")}
+                tick={{ fill: t.textSecondary, fontSize: 12 }}
+                axisLine={{ stroke: t.baseline }}
+                tickLine={false}
+              />
+              <Tooltip
+                cursor={{ fill: t.grid, opacity: 0.6 }}
+                wrapperStyle={{ zIndex: 50, outline: "none" }}
+                contentStyle={tooltipStyle(t)}
+                labelStyle={{ color: t.axis, marginBottom: 4 }}
+                itemStyle={{ color: t.text, fontVariantNumeric: "tabular-nums" }}
+                formatter={(v) => [fmt(v), valueLabel]}
+              />
+              <Bar
+                dataKey="pnl"
+                name={valueLabel}
+                fill={t.accent}
+                barSize={14}
+                radius={[0, 4, 4, 0]}
+                isAnimationActive={false}
+              />
+            </BarChart>
+          </ResponsiveContainer>
+        )}
+      </div>
+    </section>
   );
 }

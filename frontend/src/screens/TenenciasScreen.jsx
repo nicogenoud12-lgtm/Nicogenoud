@@ -2,7 +2,10 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { getHoldings } from "../api/portfolio";
 import DataTable from "../components/DataTable.jsx";
+import Delta from "../components/Delta.jsx";
 import LoadingSpinner from "../components/LoadingSpinner.jsx";
+import PageHeader from "../components/PageHeader.jsx";
+import { colorFor, useChartTokens } from "../components/charts/chartTheme";
 import { formatARS, formatNumber, formatUSD } from "../utils/format";
 import { useUiStore } from "../store/uiStore";
 
@@ -10,6 +13,7 @@ const CLASES = ["Todos", "CEDEAR", "Acción", "Bono", "ON", "Letra", "FCI", "Otr
 
 export default function TenenciasScreen() {
   const currency = useUiStore((s) => s.currency);
+  const t = useChartTokens();
   const qc = useQueryClient();
   const [clase, setClase] = useState("Todos");
   const [search, setSearch] = useState("");
@@ -49,9 +53,32 @@ export default function TenenciasScreen() {
   );
 
   const columns = [
-    { key: "simbolo", label: "Símbolo", sortable: true },
-    { key: "clase", label: "Clase", sortable: true, render: (r) => <span className="chip">{r.clase}</span> },
-    { key: "descripcion", label: "Descripción", sortable: true },
+    {
+      key: "simbolo",
+      label: "Símbolo",
+      sortable: true,
+      render: (r) => <span className="font-medium text-text">{r.simbolo}</span>,
+    },
+    {
+      key: "clase",
+      label: "Clase",
+      sortable: true,
+      render: (r) => (
+        <span className="inline-flex items-center gap-2 text-textSecondary">
+          <span
+            className="h-2 w-2 rounded-full"
+            style={{ background: colorFor(r.clase, [], t.categorical) || t.axis }}
+          />
+          {r.clase}
+        </span>
+      ),
+    },
+    {
+      key: "descripcion",
+      label: "Descripción",
+      sortable: true,
+      className: "text-textMuted max-w-[260px] truncate",
+    },
     {
       key: "cantidad",
       label: "Cant.",
@@ -90,57 +117,48 @@ export default function TenenciasScreen() {
       align: "right",
       sortable: true,
       value: (r) => Number(r.ganancia_porcentaje),
-      render: (r) => {
-        const v = Number(r.ganancia_porcentaje || 0);
-        return (
-          <span className={v >= 0 ? "text-success" : "text-danger"}>{v.toFixed(2)}%</span>
-        );
-      },
+      render: (r) => <Delta value={Number(r.ganancia_porcentaje || 0)} />,
     },
   ];
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-center gap-3">
-        <h1 className="text-xl font-semibold mr-auto">Tenencias</h1>
-        <input
-          className="input max-w-xs"
-          placeholder="Buscar símbolo o descripción"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-        />
-        <button
-          className="btn-primary"
-          onClick={() => refresh.mutate()}
-          disabled={refresh.isPending}
-        >
-          {refresh.isPending ? "Actualizando…" : "↻ Actualizar"}
-        </button>
-      </div>
+    <div>
+      <PageHeader
+        title="Tenencias"
+        subtitle={`${rows.length} ${rows.length === 1 ? "tenencia" : "tenencias"}${
+          clase === "Todos" ? "" : ` · ${clase}`
+        } · ${fmt(totalFiltrado)}`}
+        actions={
+          <>
+            <input
+              className="input w-64"
+              placeholder="Buscar símbolo o descripción"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+            <button className="btn-secondary" onClick={() => refresh.mutate()} disabled={refresh.isPending}>
+              {refresh.isPending ? "Actualizando…" : "Actualizar"}
+            </button>
+          </>
+        }
+      />
 
-      <div className="flex flex-wrap gap-2">
-        {CLASES.map((c) => (
-          <button
-            key={c}
-            onClick={() => setClase(c)}
-            className={`chip ${
-              clase === c ? "bg-accent text-white border-accent" : "cursor-pointer"
-            }`}
-          >
-            {c}
-          </button>
-        ))}
-      </div>
-
-      <div className="card p-3 flex flex-wrap items-baseline justify-between gap-2">
-        <div className="text-xs uppercase tracking-wide text-textMuted">
-          Total {clase === "Todos" ? "" : clase} · {rows.length}{" "}
-          {rows.length === 1 ? "tenencia" : "tenencias"}
+      <div className="mb-4 overflow-x-auto">
+        <div className="segmented" role="group" aria-label="Filtrar por clase">
+          {CLASES.map((c) => (
+            <button
+              key={c}
+              onClick={() => setClase(c)}
+              aria-pressed={clase === c}
+              className={`segmented-item ${clase === c ? "segmented-item-active" : ""}`}
+            >
+              {c}
+            </button>
+          ))}
         </div>
-        <div className="text-lg font-semibold tabular-nums">{fmt(totalFiltrado)}</div>
       </div>
 
-      {q.isLoading ? <LoadingSpinner /> : <DataTable columns={columns} rows={rows} />}
+      {q.isLoading ? <LoadingSpinner /> : <DataTable columns={columns} rows={rows} emptyText="Sin tenencias." />}
     </div>
   );
 }
