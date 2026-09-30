@@ -30,6 +30,10 @@ class Settings(BaseSettings):
     dolar_cron_evening: str = "50 23 * * *"
     operations_year: int = 2026
 
+    # Resumen diario con IA (Claude). Sin API key la función queda deshabilitada.
+    anthropic_api_key: str = ""
+    ai_model: str = "claude-opus-5-5"
+
     @property
     def cors_origin_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]

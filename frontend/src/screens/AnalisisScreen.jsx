@@ -4,6 +4,7 @@ import { getHoldings, getKpis } from "../api/portfolio";
 import { operationsSummary } from "../api/operations";
 import { listSnapshots } from "../api/snapshots";
 import { getCryptoReport, listCryptoSnapshots } from "../api/crypto";
+import AiInsightCard from "../components/AiInsightCard.jsx";
 import Card from "../components/Card.jsx";
 import Delta from "../components/Delta.jsx";
 import KpiCard from "../components/KpiCard.jsx";
@@ -148,6 +149,8 @@ export default function AnalisisScreen() {
           <KpiCard label="IOL" value={fmt(iolShown)} sub={share(iolShown)} />
           <KpiCard label="Crypto" value={fmt(cryptoShown)} sub={share(cryptoShown)} />
         </div>
+
+        <AiInsightCard />
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 items-stretch">
           <div className="lg:col-span-2">

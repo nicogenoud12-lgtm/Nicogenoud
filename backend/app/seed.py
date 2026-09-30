@@ -15,6 +15,8 @@ DEFAULT_SETTINGS = {
     "tz": "America/Argentina/Buenos_Aires",
     "operations_year": "2026",
     "iol_keepalive_cron": "0 */12 * * *",
+    # Lunes a viernes 18:10, después del cierre del mercado (17:00 ART)
+    "ai_insight_cron": "10 18 * * 1-5",
 }
 
 

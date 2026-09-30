@@ -19,6 +19,7 @@ ALLOWED_KEYS = {
     "dolar_cron_evening",
     "tz",
     "operations_year",
+    "ai_insight_cron",
 }
 
 
@@ -41,7 +42,7 @@ def update_settings(
             raise HTTPException(
                 status_code=400, detail=f"dolar_source must be one of {SUPPORTED_SOURCES}"
             )
-        if k in {"scheduler_enabled", "snapshot_cron", "dolar_cron_morning", "dolar_cron_evening", "tz"}:
+        if k in {"scheduler_enabled", "snapshot_cron", "dolar_cron_morning", "dolar_cron_evening", "tz", "ai_insight_cron"}:
             needs_reschedule = True
         set_setting(db, k, v)
     db.commit()

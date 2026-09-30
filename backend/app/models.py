@@ -254,6 +254,28 @@ class CryptoSale(Base):
     )
 
 
+class AiInsight(Base):
+    """Resumen diario generado por IA (Claude). Uno por día: regenerar pisa el del día."""
+
+    __tablename__ = "ai_insights"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    date: Mapped[date] = mapped_column(Date, nullable=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    model: Mapped[str] = mapped_column(String(64), nullable=False)
+    source: Mapped[str] = mapped_column(String(16), nullable=False, default="manual")
+    content_json: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    input_tokens: Mapped[int | None] = mapped_column(nullable=True)
+    output_tokens: Mapped[int | None] = mapped_column(nullable=True)
+
+    __table_args__ = (UniqueConstraint("user_id", "date", name="uq_ai_insight_user_date"),)
+
+
 class AppSetting(Base):
     __tablename__ = "app_settings"
 

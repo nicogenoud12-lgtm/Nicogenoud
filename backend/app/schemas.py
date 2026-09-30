@@ -311,3 +311,22 @@ class CryptoSalesReport(BaseModel):
     total_pnl_ars: float = 0.0
     ars_rate: float
     dolar_source: str
+
+
+class AiInsightOut(BaseModel):
+    id: int
+    date: date
+    created_at: datetime
+    model: str
+    source: str
+    content_json: dict
+
+    _created_at_utc = field_validator("created_at")(_as_utc)
+
+    class Config:
+        from_attributes = True
+
+
+class AiInsightStatus(BaseModel):
+    enabled: bool
+    insight: Optional[AiInsightOut] = None

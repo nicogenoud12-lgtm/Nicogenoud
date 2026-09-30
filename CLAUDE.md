@@ -58,7 +58,8 @@ Nicogenoud/
 │       │   ├── operations_sync.py     /operaciones año en curso → upsert
 │       │   ├── dolar_job.py           dolarapi.com (today only)
 │       │   ├── iol_keepalive.py       refresh proactivo cada 12h
-│       │   └── crypto_snapshot_job.py crypto holdings (Binance)
+│       │   ├── crypto_snapshot_job.py crypto holdings (Binance)
+│       │   └── ai_insight_job.py      resumen diario con IA (L-V 18:10)
 │       ├── services/
 │       │   ├── iol_auth.py            OAuth2 password/refresh + per-user asyncio.Lock
 │       │   ├── iol_client.py          httpx + tenacity
@@ -70,8 +71,9 @@ Nicogenoud/
 │       │   ├── pnl.py                 operations_summary (FX bidireccional)
 │       │   ├── binance.py             crypto live prices (primary)
 │       │   ├── coingecko.py           crypto fallback
-│       │   └── crypto_service.py
-│       ├── routers/                   auth, iol, portfolio, operations, dolar, settings, snapshots, crypto
+│       │   ├── crypto_service.py
+│       │   └── ai_insights.py         contexto de cartera → Claude → resumen + recomendaciones
+│       ├── routers/                   auth, iol, portfolio, operations, dolar, settings, snapshots, crypto, insights
 │       └── tests/                     test_classifier, test_pnl, test_portfolio, test_flows, test_crypto_*
 └── frontend/src/
     ├── screens/                       Resumen, Tenencias, Operaciones, Analisis, Crypto, Ajustes
@@ -107,6 +109,7 @@ Nicogenoud/
 | dolar | `GET /dolar/current?source=`, `GET /dolar/history`, **`POST /dolar/backfill?desde=&hasta=`** |
 | settings | `GET /settings`, `PUT /settings` |
 | snapshots | `GET /snapshots`, `POST /snapshots/run-now`, `DELETE /snapshots/{id}` |
+| insights | `GET /insights/latest`, `GET /insights?limit=`, `POST /insights/generate` |
 
 Todos requieren `Depends(get_current_user)` excepto `/auth/login`.
 
@@ -222,6 +225,11 @@ Después de cambios significativos, decile al usuario:
 - `ADMIN_USERNAME=nico`, `ADMIN_PASSWORD=<set on first boot>`
 - `SCHEDULER_ENABLED=true`
 - `BINANCE_API_KEY` / `BINANCE_API_SECRET` (opcional, read-only — para evitar geo-blocking en crypto)
+- `ANTHROPIC_API_KEY` (opcional) — habilita el "Resumen del día" con IA en la pantalla Resumen. `AI_MODEL` default `claude-opus-5-5`.
+
+### Resumen diario con IA (`services/ai_insights.py`)
+
+`build_context()` arma un JSON sólo con datos de la DB (tenencias con peso y variación del día, evolución 30d, operaciones 30d, próximos pagos 60d, MEP, crypto). Se lo pasa a Claude con structured outputs (`DailyInsight`: título, resumen, destacados, recomendaciones, riesgos). El modelo **no tiene noticias ni precios externos**: el prompt le prohíbe inventarlos. Las recomendaciones apuntan a dónde destinar aportes/reinversión (el usuario no vende). Un registro por día en `AiInsight` (regenerar lo pisa). Job automático L-V 18:10 (`ai_insight_cron`), sólo si hay API key.
 
 ## 🎯 TL;DR para futuros chats
 

@@ -10,7 +10,8 @@ from sqlalchemy.orm import Session
 
 from .crud import get_setting
 from .database import SessionLocal
-from .jobs import crypto_snapshot_job, dolar_job, holdings_refresh_job, iol_keepalive, operations_sync, snapshot_job
+from .services import ai_insights
+from .jobs import ai_insight_job, crypto_snapshot_job, dolar_job, holdings_refresh_job, iol_keepalive, operations_sync, snapshot_job
 
 log = logging.getLogger(__name__)
 
@@ -49,6 +50,7 @@ def start_scheduler() -> AsyncIOScheduler | None:
         dolar_morning = get_setting(db, "dolar_cron_morning", "0 8 * * *") or "0 8 * * *"
         dolar_evening = get_setting(db, "dolar_cron_evening", "50 23 * * *") or "50 23 * * *"
         keepalive_cron = get_setting(db, "iol_keepalive_cron", "0 */12 * * *") or "0 */12 * * *"
+        ai_cron = get_setting(db, "ai_insight_cron", "10 18 * * 1-5") or "10 18 * * 1-5"
     finally:
         db.close()
 
@@ -65,6 +67,8 @@ def start_scheduler() -> AsyncIOScheduler | None:
         max_instances=1,
         coalesce=True,
     )
+    if ai_insights.is_enabled():
+        sched.add_job(ai_insight_job.run, _cron(ai_cron, tz), id="ai_insight", replace_existing=True)
     sched.start()
     _scheduler = sched
     log.info("scheduler started tz=%s snapshot=%s keepalive=%s holdings_refresh=5min", tz, snapshot_cron, keepalive_cron)
