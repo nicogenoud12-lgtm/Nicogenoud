@@ -9,10 +9,9 @@ from ..deps import get_current_user
 from ..jobs import snapshot_job
 from ..models import Holding, PortfolioSnapshot, User
 from ..schemas import SnapshotOut
-from ..services import history_service, portfolio_service
+from ..services import background, history_service
 from ..services.classifier import classify_asset
 from ..services.dolar_service import build_mep_lookup, fx_for_date
-from ..services.iol_auth import IolAuthError, IolNotConnectedError
 from ..services.ons_whitelist import normalize_ticker
 from ..services.pnl import amortization_events, income_events, net_flows
 
@@ -160,22 +159,20 @@ async def run_now(user: User = Depends(get_current_user), db: Session = Depends(
 async def reconstruct(
     dias: int = Query(default=365, ge=7, le=3650),
     user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
 ):
-    """Genera snapshots diarios hacia atrás a partir de las tenencias, operaciones y precios históricos."""
-    try:
-        # Las tenencias de hoy son el punto de partida: mejor que estén frescas
-        await portfolio_service.refresh_holdings(db, user.id)
-    except (IolNotConnectedError, IolAuthError):
-        raise HTTPException(status_code=409, detail="IOL no está conectado")
-    except Exception:
-        pass  # se usan las tenencias guardadas
-    try:
-        return await history_service.reconstruct_snapshots(db, user.id, dias=dias)
-    except IolNotConnectedError:
-        raise HTTPException(status_code=409, detail="IOL no está conectado")
-    except IolAuthError as e:
-        raise HTTPException(status_code=401, detail=str(e))
+    """Lanza en segundo plano la reconstrucción de la evolución diaria; devuelve el estado."""
+
+    uid = user.id
+
+    async def job(db, progress):
+        return await history_service.rebuild_last_year(db, uid, progress, dias=dias)
+
+    return background.start(uid, "reconstruct", job)
+
+
+@router.get("/reconstruct")
+def reconstruct_status(user: User = Depends(get_current_user)):
+    return background.get(user.id, "reconstruct")
 
 
 @router.delete("/by-date/{date_str}")

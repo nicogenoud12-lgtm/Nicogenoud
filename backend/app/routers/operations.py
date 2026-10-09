@@ -8,7 +8,7 @@ from ..database import get_db
 from ..deps import get_current_user
 from ..models import Operation, User
 from ..schemas import OperationOut, OperationsSummary
-from ..services import operations_service, pnl
+from ..services import background, operations_service, pnl
 from ..services.dolar_service import build_mep_lookup, fx_for_date
 from ..services.iol_auth import IolAuthError, IolNotConnectedError
 
@@ -98,6 +98,23 @@ async def sync(
     except IolAuthError as e:
         raise HTTPException(status_code=401, detail=str(e))
     return {"synced": n, "year": year}
+
+
+@router.post("/sync-history")
+async def sync_history(user: User = Depends(get_current_user)):
+    """Lanza en segundo plano la sincronización de todos los años; devuelve el estado."""
+
+    uid = user.id
+
+    async def job(db, progress):
+        return await operations_service.sync_history(db, uid, progress)
+
+    return background.start(uid, "sync-history", job)
+
+
+@router.get("/sync-history")
+def sync_history_status(user: User = Depends(get_current_user)):
+    return background.get(user.id, "sync-history")
 
 
 @router.get("/summary", response_model=OperationsSummary)

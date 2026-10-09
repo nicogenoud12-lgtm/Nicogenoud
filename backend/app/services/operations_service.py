@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import logging
 from datetime import date
-from typing import Any
+from typing import Any, Callable
 
 from sqlalchemy.orm import Session
 
@@ -170,6 +170,31 @@ async def sync_operations(
         log.info("sync_operations: backfilled %d MEP historical rows", inserted_mep)
 
     return touched
+
+
+# Recorrido del historial hacia atrás: se corta tras varios años seguidos sin
+# operaciones (una vez encontrada alguna) o al llegar al piso.
+HISTORY_FLOOR_YEAR = 2000
+HISTORY_EMPTY_STREAK = 5
+
+
+async def sync_history(db: Session, user_id: int, progress: Callable[[str], None]) -> dict:
+    """Sincroniza año por año hacia atrás hasta agotar el historial de IOL."""
+    found = 0
+    oldest = None
+    empty_streak = 0
+    for year in range(date.today().year, HISTORY_FLOOR_YEAR - 1, -1):
+        progress(f"Año {year}" + (f" · {found} operaciones encontradas" if found else ""))
+        n = await sync_operations(db, user_id, year=year)
+        if n > 0:
+            found += n
+            oldest = year
+            empty_streak = 0
+        elif found > 0:
+            empty_streak += 1
+            if empty_streak >= HISTORY_EMPTY_STREAK:
+                break
+    return {"found": found, "oldest": oldest}
 
 
 async def _enrich_with_movimientos(
