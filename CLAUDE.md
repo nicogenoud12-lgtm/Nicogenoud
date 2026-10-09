@@ -76,6 +76,7 @@ Nicogenoud/
 │       │   ├── portfolio_service.py   refresh holdings + compute_kpis (con FX)
 │       │   ├── operations_service.py  sync + enrich con /movimientos + backfill MEP
 │       │   ├── pnl.py                 operations_summary (FX bidireccional)
+│       │   ├── history_service.py     reconstrucción de snapshots hacia atrás (precios históricos IOL)
 │       │   ├── binance.py             crypto live prices (primary)
 │       │   ├── coingecko.py           crypto fallback
 │       │   └── crypto_service.py
@@ -114,7 +115,7 @@ Nicogenoud/
 | operations | `GET /operations?year=`, `GET /operations/years`, `POST /operations/sync?year=`, `GET /operations/summary?year=` (year default = año en curso) |
 | dolar | `GET /dolar/current?source=`, `GET /dolar/history`, **`POST /dolar/backfill?desde=&hasta=`** |
 | settings | `GET /settings`, `PUT /settings` |
-| snapshots | `GET /snapshots`, `POST /snapshots/run-now`, `DELETE /snapshots/{id}` |
+| snapshots | `GET /snapshots`, `POST /snapshots/run-now`, **`POST /snapshots/reconstruct?dias=`**, `DELETE /snapshots/{id}` |
 
 Todos requieren `Depends(get_current_user)` excepto `/auth/login`.
 
@@ -149,6 +150,10 @@ El frontend togglea entre `total_*_ars` y `total_*_usd` según `useUiStore`. Sin
 **P&L no realizada** sale de `Holding.ganancia_dinero` (ARS, de IOL). El USD se calcula dividiendo por la cotización MEP **actual** (no histórica) — es una valoración en vivo.
 
 **P&L realizada de IOL — NO existe**. El usuario no vende. Removida del backend y frontend (commit `e3fd6d6`). Excepción: las ventas de **crypto** sí registran P&L realizada (pedido explícito, PR #24).
+
+### Evolución reconstruida (`services/history_service.py`)
+
+"Reconstruir el último año" (Resumen con gráfico vacío, o Ajustes) arma snapshots diarios hacia atrás: el frontend sincroniza las operaciones de los años del período y después llama `POST /snapshots/reconstruct`. Parte de las tenencias actuales (refresca antes), deshace compras/ventas/suscripciones/rescates para obtener la cantidad de cada día y la valúa con `seriehistorica` de IOL (sin ajustar). Cada posición se calibra contra la valuación actual (`factor = valuación / (cantidad × último precio)`, así los bonos que cotizan cada 100 VN quedan bien). Operaciones con sufijo de moneda (`AL30D`) suman a la tenencia base (`AL30`). Posiciones ya vendidas se agrupan por base y su factor sale de sus operaciones. **FCI no tiene serie**: se valúa a la cuotaparte actual (rendimiento pasado 0) y sus movimientos se toman por monto. Los snapshots quedan con `source="reconstruido"`, **nunca pisan uno real** y se pueden regenerar. El gráfico muestra "Reconstruido hasta el …".
 
 ### IOL keep-alive
 

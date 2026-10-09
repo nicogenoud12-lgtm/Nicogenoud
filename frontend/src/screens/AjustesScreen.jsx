@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { iolConnect, iolDisconnect, iolRefresh, iolStatus } from "../api/iol";
 import { getSettings, updateSettings } from "../api/settings";
 import { runSnapshotNow } from "../api/snapshots";
+import { reconstructErrorText, useReconstructHistory } from "../hooks/useReconstructHistory";
 import LoadingSpinner from "../components/LoadingSpinner.jsx";
 import PageHeader from "../components/PageHeader.jsx";
 import { formatDate } from "../utils/format";
@@ -107,6 +108,8 @@ export default function AjustesScreen() {
         text: e?.response?.data?.detail || "No se pudo generar snapshot",
       }),
   });
+
+  const rebuild = useReconstructHistory();
 
   if (status.isLoading || settings.isLoading) return <LoadingSpinner />;
 
@@ -254,6 +257,24 @@ export default function AjustesScreen() {
             <button className="btn-secondary" onClick={() => runSnap.mutate()} disabled={runSnap.isPending}>
               {runSnap.isPending ? "Generando…" : "Generar snapshot ahora"}
             </button>
+          </div>
+        </SettingsSection>
+
+        <SettingsSection
+          title="Evolución histórica"
+          description="Arma la evolución diaria del último año a partir de las tenencias actuales, las operaciones y los precios históricos de IOL. No pisa los snapshots reales; se puede volver a correr. Los FCI se valúan a la cuotaparte actual."
+        >
+          <div className="flex flex-wrap items-center gap-3">
+            <button className="btn-secondary" onClick={() => rebuild.mutate()} disabled={rebuild.isPending}>
+              {rebuild.isPending ? rebuild.step : "Reconstruir el último año"}
+            </button>
+            {rebuild.isSuccess && (
+              <span className="text-sm text-textMuted">
+                {rebuild.data.creados + rebuild.data.actualizados} días armados desde el{" "}
+                {rebuild.data.desde.split("-").reverse().join("/")}
+              </span>
+            )}
+            {rebuild.isError && <span className="text-sm text-danger">{reconstructErrorText(rebuild.error)}</span>}
           </div>
         </SettingsSection>
       </div>

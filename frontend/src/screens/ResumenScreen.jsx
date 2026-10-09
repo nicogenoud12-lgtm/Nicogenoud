@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { getKpis, getHoldings, getUpcomingEvents } from "../api/portfolio";
 import { listSnapshots } from "../api/snapshots";
+import { reconstructErrorText, useReconstructHistory } from "../hooks/useReconstructHistory";
 import Card from "../components/Card.jsx";
 import Delta from "../components/Delta.jsx";
 import KpiCard from "../components/KpiCard.jsx";
@@ -122,6 +123,7 @@ export default function ResumenScreen() {
 
   const kpis = useQuery({ queryKey: ["kpis"], queryFn: getKpis });
   const snaps = useQuery({ queryKey: ["snapshots", snapDays], queryFn: () => listSnapshots(snapDays) });
+  const rebuild = useReconstructHistory();
   const holdings = useQuery({ queryKey: ["holdings"], queryFn: () => getHoldings(false) });
   const upcoming = useQuery({ queryKey: ["upcoming-events"], queryFn: getUpcomingEvents, staleTime: 300_000 });
 
@@ -203,6 +205,14 @@ export default function ResumenScreen() {
               period={snapPeriod}
               onPeriodChange={setSnapPeriod}
               className="h-full min-h-[22rem]"
+              emptyAction={
+                <>
+                  <button className="btn-secondary" onClick={() => rebuild.mutate()} disabled={rebuild.isPending}>
+                    {rebuild.isPending ? rebuild.step : "Reconstruir el último año"}
+                  </button>
+                  {rebuild.isError && <span className="text-danger">{reconstructErrorText(rebuild.error)}</span>}
+                </>
+              }
             />
           </div>
           <AssetDonutChart

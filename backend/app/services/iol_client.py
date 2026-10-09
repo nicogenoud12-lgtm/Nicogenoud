@@ -129,6 +129,17 @@ class IolClient:
             "GET", f"/api/v2/{mercado}/Titulos/{simbolo}/Cotizacion"
         )
 
+    async def get_serie_historica(self, mercado: str, simbolo: str, *, desde: date, hasta: date) -> list:
+        """Cotizaciones diarias sin ajustar de un título (lista de dicts con ultimoPrecio/fechaHora)."""
+        from urllib.parse import quote
+
+        result = await self._request(
+            "GET",
+            f"/api/v2/{mercado}/Titulos/{quote(simbolo, safe='')}/Cotizacion/seriehistorica/"
+            f"{desde.isoformat()}/{hasta.isoformat()}/sinAjustar",
+        )
+        return result if isinstance(result, list) else []
+
     async def get_movimientos(self, *, desde: date, hasta: date) -> list:
         """Fetch account movements in 30-day chunks to avoid IOL 500 on long ranges."""
         from datetime import timedelta
