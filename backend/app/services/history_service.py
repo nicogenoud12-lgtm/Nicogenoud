@@ -22,6 +22,10 @@ Casos que IOL no informa como compra o venta:
   antes: no se valúa antes de su primera cotización.
 - Un título que venció en el período sale de la cartera con su amortización
   final: hasta ese día se valúa con la cantidad que se cobró.
+- Desdoblamientos (split) de acciones y cambios de ratio de CEDEAR: la serie sin
+  ajustar salta de escala (YPFD ÷10). Se detectan por un salto de un día que
+  coincide con un ratio típico y se pasa todo lo anterior (precios y cantidades
+  de las operaciones) a la escala de hoy.
 """
 from __future__ import annotations
 
@@ -55,6 +59,10 @@ _AMORT = "AMORTIZACION"
 # (no uno ilíquido que no operó unos días); al final, uno que venció.
 _LISTING_GAP = timedelta(days=30)
 _EXPIRED_GAP = timedelta(days=5)
+_SPLIT_RATIOS = (2, 3, 4, 5, 10, 20, 25, 50, 100)
+# El día del split la acción además se mueve con el mercado
+_SPLIT_TOLERANCE = 0.12
+_SPLIT_CLASSES = ("Acción", "CEDEAR")
 _CLASS_RE = re.compile(r"\bCL(?:ASE)?\.?\s*(\d+)", re.IGNORECASE)
 _PER_100_CLASSES = ("Bono", "ON", "Letra")
 _IOL_MARKETS = {"argentina": ("bCBA",), "estados_unidos": ("nYSE", "nASDAQ", "aMEX")}
@@ -97,6 +105,15 @@ class _Position:
     held: bool = True  # está en la cartera de hoy
     active_from: date | None = None  # empezó a cotizar en el período
     active_until: date | None = None  # venció en el período (sólo posiciones que ya no están)
+    splits: list = field(default_factory=list)  # [(fecha desde la que rige, k)]
+
+    def split_mult(self, d: date) -> float:
+        """Cuántas unidades de hoy equivale una unidad del día d (por splits posteriores)."""
+        mult = 1.0
+        for since, k in self.splits:
+            if since > d:
+                mult *= k
+        return mult
 
     def has_series(self) -> bool:
         return bool(self.prices) and self.factor is not None
@@ -133,6 +150,30 @@ def _parse_series(rows: list) -> tuple[list, list]:
             by_day[d] = (stamp, price)
     dates = sorted(by_day)
     return dates, [by_day[d][1] for d in dates]
+
+
+def _split_factor(prev: float, cur: float) -> float | None:
+    """k si el salto prev → cur es un split k:1 (o 1/k si es un contrasplit)."""
+    r = prev / cur
+    for k in _SPLIT_RATIOS:
+        if abs(r / k - 1) <= _SPLIT_TOLERANCE:
+            return float(k)
+        if abs(r * k - 1) <= _SPLIT_TOLERANCE:
+            return 1.0 / k
+    return None
+
+
+def _adjust_splits(p: _Position) -> None:
+    """Lleva los precios anteriores a cada split a la escala de hoy."""
+    if p.clase not in _SPLIT_CLASSES or len(p.prices) < 2:
+        return
+    for i in range(1, len(p.prices)):
+        k = _split_factor(p.prices[i - 1], p.prices[i])
+        if k:
+            p.splits.append((p.price_dates[i], k))
+    if p.splits:
+        log.info("split detectado %s: %s", p.simbolo, p.splits)
+        p.prices = [price / p.split_mult(d) for d, price in zip(p.price_dates, p.prices)]
 
 
 def _op_amount_native(op: Operation, native: str, mep: dict, mep_dates: list) -> float:
@@ -249,6 +290,7 @@ async def _fetch_series(client: IolClient, p: _Position, desde: date, hasta: dat
         dates, prices = _parse_series(rows)
         if dates:
             p.price_dates, p.prices = dates, prices
+            _adjust_splits(p)
             return
 
 
@@ -309,7 +351,8 @@ async def reconstruct_snapshots(
                 amount = _op_amount_native(o, p.native, mep, mep_dates)
                 moves.append((o.fecha_operada, -(amount / unit) if unit and amount else 0.0))
                 continue
-            qty = _f(o.cantidad)
+            # Cantidades de antes de un split, en unidades de hoy
+            qty = _f(o.cantidad) * p.split_mult(o.fecha_operada)
             if p.clase == "FCI" or qty <= 0:
                 # FCI: la cantidad de IOL no siempre viene en cuotapartes; se usa el monto
                 unit = p.unit_value(o.fecha_operada)

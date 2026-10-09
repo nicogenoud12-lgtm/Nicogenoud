@@ -17,6 +17,16 @@ export const MAX_DAILY_MOVE = 0.35;
 // Un cobro mayor a esto (sobre el valor anterior) es un dato inconsistente y se ignora
 const MAX_INCOME_SHARE = 0.2;
 
+// Desdoblamiento (split) o cambio de ratio: la cantidad se multiplica por k y el valor casi
+// no cambia. No es una compra ni una caída de precio: el tramo rinde lo que cambió el valor.
+const SPLIT_RATIOS = [2, 3, 4, 5, 10, 20, 25, 50, 100];
+function isSplit(p, c) {
+  const valueRatio = c.value / p.value;
+  if (!(valueRatio > 0.75 && valueRatio < 1.33)) return false;
+  const q = c.qty / p.qty;
+  return SPLIT_RATIOS.some((k) => Math.abs(q / k - 1) < 0.02 || Math.abs(q * k - 1) < 0.02);
+}
+
 function toMap(holdings) {
   const m = new Map();
   for (const h of holdings || []) {
@@ -41,6 +51,7 @@ function holdingsStep(prev, cur) {
   let end = 0;
   let flow = 0;
   const amortized = new Set();
+  const split = new Set();
   for (const [key, p] of a) {
     if (p.value <= 0) continue;
     const c = b.get(key);
@@ -51,14 +62,19 @@ function holdingsStep(prev, cur) {
       amortized.add(key);
     } else if (c) {
       base += p.value;
-      end += p.qty * (c.value / c.qty);
+      if (isSplit(p, c)) {
+        end += c.value;
+        split.add(key);
+      } else {
+        end += p.qty * (c.value / c.qty);
+      }
     }
   }
   if (base <= 0) return null;
 
   // Flujo = plata puesta o sacada de las posiciones: cambio de cantidad × precio actual
   for (const [key, c] of b) {
-    if (!amortized.has(key)) flow += (c.qty - (a.get(key)?.qty || 0)) * (c.value / c.qty);
+    if (!amortized.has(key) && !split.has(key)) flow += (c.qty - (a.get(key)?.qty || 0)) * (c.value / c.qty);
   }
   for (const [key, p] of a) if (!b.has(key) && !amortized.has(key)) flow -= p.value;
   // Lo amortizado sale de las tenencias (se marca como retiro) aunque no afecte el rendimiento

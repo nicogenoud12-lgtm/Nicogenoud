@@ -191,3 +191,45 @@ def test_licitacion_new_listing_and_matured_bond(db, user, monkeypatch):
     assert "OTS6O" not in hace15  # antes de emitirse no existía
     assert hace15["YM39O"]["cantidad"] == pytest.approx(1_000)  # otra ON de YPF no se toca
     assert hace15["TZX26"]["valuacion_ars"] == pytest.approx(6_000_000)  # hasta vencer, lo cobrado
+
+
+def test_stock_split_is_rescaled(db, user, monkeypatch):
+    # YPFD se desdobla 10:1 hace 8 días: la serie sin ajustar salta de ~80.000 a ~8.000
+    serie = _series({n: (8_065 if n < 8 else 80_000) for n in range(0, 25)})
+
+    class _C:
+        def __init__(self, *a, **k):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *exc):
+            return False
+
+        async def get_serie_historica(self, mercado, simbolo, **kw):
+            return serie
+
+    async def no_backfill(*a, **k):
+        return 0
+
+    monkeypatch.setattr(history_service, "IolClient", _C)
+    monkeypatch.setattr(history_service, "backfill_historical_mep", no_backfill)
+    db.add_all([
+        Holding(user_id=user.id, mercado="argentina", simbolo="YPFD", clase="Acción", cantidad=690,
+                valuacion_ars=690 * 8_065, valuacion_usd=690 * 8.065, moneda="peso_Argentino"),
+        # Compra de 9 acciones (escala vieja) antes del split: son 90 de hoy
+        Operation(user_id=user.id, iol_numero="20", fecha_operada=_d(12), event_kind="COMPRA", simbolo="YPFD",
+                  currency_kind="ARS", cantidad=9, precio=80_000, monto_operado=720_000, monto_neto=-720_000),
+    ])
+    db.commit()
+    asyncio.run(history_service.reconstruct_snapshots(db, user.id, dias=20))
+
+    despues = _by_sym(_snap(db, 3))["YPFD"]
+    antes = _by_sym(_snap(db, 10))["YPFD"]
+    mucho_antes = _by_sym(_snap(db, 15))["YPFD"]
+    assert despues["valuacion_ars"] == pytest.approx(690 * 8_065)
+    # Antes del split: misma cantidad de hoy, precio en escala nueva → sin salto de valor
+    assert antes["cantidad"] == pytest.approx(690)
+    assert antes["valuacion_ars"] == pytest.approx(690 * 8_000)
+    assert mucho_antes["cantidad"] == pytest.approx(600)
