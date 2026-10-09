@@ -11,8 +11,10 @@ Para que una unidad de precio rara (bonos cotizan cada 100 VN) no distorsione,
 cada posición se calibra contra la valuación actual de IOL: factor = valuación
 de hoy / (cantidad × último precio de la serie).
 
-Los FCI no tienen serie en IOL: se valúan a la cuotaparte de hoy (valor plano
-salvo suscripciones y rescates), así que su rendimiento pasado queda en cero.
+Los FCI no suelen tener serie en IOL: la cuotaparte de cada día se arma con las
+de sus suscripciones y rescates (monto ÷ cuotapartes) más la de hoy, interpolando
+entre fechas. Valuarlos a la cuotaparte de hoy hacía que un fondo en pesos
+"perdiera" en dólares todo lo que subió el MEP.
 
 Casos que IOL no informa como compra o venta:
 - Licitaciones y algunos aportes a FCI llegan como tipo "Otro" con cantidad: se
@@ -107,6 +109,7 @@ class _Position:
     active_from: date | None = None  # empezó a cotizar en el período
     active_until: date | None = None  # venció en el período (sólo posiciones que ya no están)
     splits: list = field(default_factory=list)  # [(fecha desde la que rige, k)]
+    interpolate: bool = False  # serie armada con pocos puntos (FCI): se interpola entre ellos
 
     def split_mult(self, d: date) -> float:
         """Cuántas unidades de hoy equivale una unidad del día d (por splits posteriores)."""
@@ -124,7 +127,14 @@ class _Position:
         if not self.price_dates:
             return None
         i = bisect.bisect_right(self.price_dates, d)
-        return self.prices[i - 1] if i > 0 else self.prices[0]
+        if i == 0:
+            return self.prices[0]
+        if not self.interpolate or i == len(self.price_dates):
+            return self.prices[i - 1]
+        # Crecimiento compuesto entre los dos puntos conocidos
+        d0, d1 = self.price_dates[i - 1], self.price_dates[i]
+        p0, p1 = self.prices[i - 1], self.prices[i]
+        return p0 * (p1 / p0) ** ((d - d0).days / (d1 - d0).days)
 
     def unit_value(self, d: date) -> float | None:
         if self.has_series():
@@ -279,9 +289,39 @@ def _calibrate(p: _Position, today: date) -> None:
         p.unit_flat = statistics.median(units)
 
 
-async def _fetch_series(client: IolClient, p: _Position, desde: date, hasta: date) -> None:
-    if p.clase == "FCI":
+def _fci_series_from_ops(p: _Position, today: date, mep: dict, mep_dates: list) -> None:
+    """Cuotaparte histórica de un FCI sin serie: la de cada suscripción/rescate y la de hoy."""
+    if p.clase != "FCI" or p.has_series():
         return
+    unit_now = p.unit_flat if p.held else None
+    points: dict[date, list[float]] = {}
+    for o in p.ops:
+        if o.event_kind not in _BUY + _SELL + (_OTHER_IN,) or not o.fecha_operada:
+            continue
+        qty = _f(o.cantidad)
+        amount = _op_amount_native(o, p.native, mep, mep_dates)
+        if qty <= 0 or amount <= 0:
+            continue
+        price = amount / qty
+        precio = _f(o.precio)
+        same_ccy = _is_usd(o.currency_kind) == (p.native == "USD")
+        if precio > 0 and same_ccy and abs(qty * precio / amount - 1) < 0.05:
+            price = precio
+        # Una cuotaparte fuera de rango es una cantidad que no viene en cuotapartes
+        if unit_now and not (unit_now / 100 <= price <= unit_now * 3):
+            continue
+        points.setdefault(o.fecha_operada, []).append(price)
+    if not points:
+        return
+    if unit_now:
+        points[today] = [unit_now]
+    p.price_dates = sorted(points)
+    p.prices = [statistics.median(points[d]) for d in p.price_dates]
+    p.factor = 1.0
+    p.interpolate = True
+
+
+async def _fetch_series(client: IolClient, p: _Position, desde: date, hasta: date) -> None:
     for mercado in _IOL_MARKETS.get(p.mercado, ("bCBA",)):
         try:
             rows = await client.get_serie_historica(mercado, p.simbolo, desde=desde, hasta=hasta)
@@ -340,10 +380,12 @@ async def reconstruct_snapshots(
 
     for p in positions:
         _calibrate(p, today)
+        _fci_series_from_ops(p, today, mep, mep_dates)
 
     fetch_from = desde - timedelta(days=10)
     for p in positions:
-        if p.price_dates and p.price_dates[0] - fetch_from > _LISTING_GAP:
+        # (una serie armada con operaciones de FCI empieza en la primera suscripción, no al listarse)
+        if not p.interpolate and p.price_dates and p.price_dates[0] - fetch_from > _LISTING_GAP:
             p.active_from = p.price_dates[0]
         if not p.held and p.price_dates and today - p.price_dates[-1] > _EXPIRED_GAP:
             p.active_until = p.price_dates[-1]
@@ -382,7 +424,8 @@ async def reconstruct_snapshots(
             suffix[i] = suffix[i + 1] + moves[i][1]
         after_sums.append((fechas, suffix))
 
-    series_days = {d for p in positions for d in p.price_dates if desde <= d <= hasta}
+    # Días hábiles: los de las series reales (las armadas de FCI tienen sólo unos puntos)
+    series_days = {d for p in positions if not p.interpolate for d in p.price_dates if desde <= d <= hasta}
     days = sorted(series_days) or [
         desde + timedelta(days=i)
         for i in range((hasta - desde).days + 1)
