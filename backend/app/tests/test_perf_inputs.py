@@ -91,3 +91,41 @@ def test_snapshot_income_window_and_usd_marker_class(db, user):
     # La amortización va por símbolo de la tenencia (GD35D → GD35), no como ingreso general
     assert out[1].amort_por_simbolo == {"GD35": {"ars": 37500, "usd": 25}}
     assert out[1].flujo_usd == pytest.approx(-25)  # sigue siendo retiro para el cálculo por flujos
+
+
+def test_past_year_sync_is_bounded_to_that_year(db, user, monkeypatch):
+    calls = {}
+
+    class _C(_fake_client([])):
+        async def get_operaciones(self, **kw):
+            calls["ops"] = (kw["desde"], kw["hasta"])
+            return [{"numero": 7, "tipo": "Compra", "simbolo": "AL30", "fechaOperada": "2019-03-04",
+                     "cantidadOperada": 10, "precioOperado": 50, "montoOperado": 500}]
+
+        async def get_movimientos(self, **kw):
+            calls["mov"] = (kw["desde"], kw["hasta"])
+            return []
+
+    monkeypatch.setattr(operations_service, "IolClient", _C)
+
+    async def no_backfill(*a, **k):
+        return 0
+
+    monkeypatch.setattr(operations_service, "backfill_historical_mep", no_backfill)
+    asyncio.run(operations_service.sync_operations(db, user.id, year=2019))
+
+    assert calls["ops"] == (date(2019, 1, 1), date(2019, 12, 31))
+    assert calls["mov"] == (date(2019, 1, 1), date(2019, 12, 31))
+
+    from app.routers.operations import operation_years
+
+    assert operation_years(user=user, db=db) == [date.today().year, 2019]
+
+
+def test_empty_past_year_skips_enrichment(db, user, monkeypatch):
+    class _C(_fake_client([])):
+        async def get_movimientos(self, **kw):
+            raise AssertionError("no debería pedir movimientos de un año vacío")
+
+    monkeypatch.setattr(operations_service, "IolClient", _C)
+    assert asyncio.run(operations_service.sync_operations(db, user.id, year=2015)) == 0

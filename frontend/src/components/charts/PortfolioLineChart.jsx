@@ -22,7 +22,15 @@ const tickDecimals = (v) => {
   return 2;
 };
 
-export default function PortfolioLineChart({ data, selectedClass, period, onPeriodChange, title, className }) {
+export default function PortfolioLineChart({
+  data,
+  selectedClass,
+  period,
+  onPeriodChange,
+  title,
+  className,
+  emptyAction,
+}) {
   const currency = useUiStore((s) => s.currency);
   const evoMode = useUiStore((s) => s.evoMode);
   const setEvoMode = useUiStore((s) => s.setEvoMode);
@@ -194,6 +202,11 @@ export default function PortfolioLineChart({ data, selectedClass, period, onPeri
   };
 
   const gradientId = `evo-fill-${t.mode}`;
+  // Último día armado con precios históricos (antes de que la app tomara snapshots reales)
+  const reconstructedUntil = useMemo(() => {
+    const r = (data || []).filter((d) => d.source === "reconstruido");
+    return r.length ? r[r.length - 1].date : null;
+  }, [data]);
 
   return (
     <section className={`card card-pad flex flex-col ${className || "h-[22rem]"}`}>
@@ -205,6 +218,7 @@ export default function PortfolioLineChart({ data, selectedClass, period, onPeri
           </h2>
           <div className="text-xs text-textMuted mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1">
             <span>{isPerf ? "Rendimiento sin compras ni ventas" : currency}</span>
+            {reconstructedUntil && <span>Reconstruido hasta el {formatDateShort(reconstructedUntil)}</span>}
             {!isPerf && hasFlowMarks && (
               <>
                 <span className="inline-flex items-center gap-1.5">
@@ -240,7 +254,12 @@ export default function PortfolioLineChart({ data, selectedClass, period, onPeri
       </div>
       <div className="flex-1 min-h-0">
         {series.length === 0 ? (
-          <div className="h-full grid place-items-center text-sm text-textMuted">Sin snapshots en el período.</div>
+          <div className="h-full grid place-items-center text-sm text-textMuted">
+            <div className="flex flex-col items-center gap-3 text-center">
+              <span>Sin snapshots en el período.</span>
+              {emptyAction}
+            </div>
+          </div>
         ) : (
           <ResponsiveContainer width="100%" height="100%">
             <AreaChart data={series} margin={{ top: 6, right: 6, left: 0, bottom: 0 }}>
