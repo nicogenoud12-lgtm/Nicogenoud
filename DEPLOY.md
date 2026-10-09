@@ -213,6 +213,36 @@ Luego `docker compose up -d --build` para que tome el nuevo env.
 
 ---
 
+## Otra cuenta de IOL (segunda instancia)
+
+Para que otra persona (ej. papá) tenga su propio dashboard con su cuenta de IOL,
+se levanta una instancia separada: otra carpeta, otra base de datos, otro login,
+otro puerto. La app sigue siendo mono-usuario; cada instancia es independiente.
+
+```bash
+cd ~/Nicogenoud && git pull
+./scripts/nueva-instancia.sh papa 8086
+```
+
+El script clona el repo en `~/Nicogenoud-papa`, genera `backend/.env` con
+secretos propios (`JWT_SECRET`, `FERNET_KEY`) y una contraseña aleatoria para el
+usuario `papa`, fija el puerto en `.env` (`FRONTEND_PORT=8086`) y levanta los
+contenedores. Al final imprime la URL, el usuario y la contraseña.
+
+Después: entrar en `http://10.0.0.69:8086`, Ajustes → Conexión IOL con la cuenta
+de esa persona, y Operaciones → Sincronizar.
+
+Para actualizar todas las instancias juntas:
+
+```bash
+cd ~/Nicogenoud && ./scripts/deploy.sh            # backend + frontend
+cd ~/Nicogenoud && ./scripts/deploy.sh backend    # sólo backend
+```
+
+Backup: sumar `~/Nicogenoud-papa/data/` al rsync.
+
+---
+
 ## Primer uso
 
 1. Login con `ADMIN_USERNAME` / `ADMIN_PASSWORD`.
