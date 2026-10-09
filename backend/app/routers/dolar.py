@@ -40,7 +40,7 @@ async def backfill(
 @router.get("/history", response_model=list[DolarQuoteOut])
 def history(
     source: str | None = None,
-    days: int = Query(default=90, ge=1, le=3650),
+    days: int = Query(default=90, ge=1, le=36500),
     db: Session = Depends(get_db),
     _user: User = Depends(get_current_user),
 ):

@@ -37,6 +37,7 @@ from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta, timezone
 from typing import Callable
 
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from ..models import Holding, Operation, PortfolioSnapshot
@@ -295,10 +296,15 @@ async def _fetch_series(client: IolClient, p: _Position, desde: date, hasta: dat
 
 
 async def reconstruct_snapshots(
-    db: Session, user_id: int, *, dias: int = 365, progress: Callable[[str], None] | None = None
+    db: Session,
+    user_id: int,
+    *,
+    dias: int = 365,
+    desde: date | None = None,
+    progress: Callable[[str], None] | None = None,
 ) -> dict:
     today = date.today()
-    desde = today - timedelta(days=dias)
+    desde = desde or today - timedelta(days=dias)
     hasta = today - timedelta(days=1)
 
     holdings = (
@@ -327,6 +333,10 @@ async def reconstruct_snapshots(
     await backfill_historical_mep(db, desde=desde - timedelta(days=10), hasta=today)
     mep = build_mep_lookup(db, desde, today)
     mep_dates = sorted(mep)
+    # Sin MEP de esos años no hay forma honesta de pasar a dólares: se arranca donde hay
+    if mep_dates and desde < mep_dates[0]:
+        log.info("reconstruct_snapshots: sin MEP antes de %s, se arranca ahí", mep_dates[0])
+        desde = mep_dates[0]
 
     for p in positions:
         _calibrate(p, today)
@@ -360,7 +370,17 @@ async def reconstruct_snapshots(
                 qty = amount / unit if unit and amount else 0.0
             sign = -1 if o.event_kind in _SELL else 1
             moves.append((o.fecha_operada, sign * qty))
+        moves.sort(key=lambda m: m[0])
         deltas.append(moves)
+
+    # Cantidad de cada posición a una fecha: la de hoy menos lo que entró después
+    after_sums: list[tuple[list, list]] = []
+    for moves in deltas:
+        fechas = [m[0] for m in moves]
+        suffix = [0.0] * (len(moves) + 1)
+        for i in range(len(moves) - 1, -1, -1):
+            suffix[i] = suffix[i + 1] + moves[i][1]
+        after_sums.append((fechas, suffix))
 
     series_days = {d for p in positions for d in p.price_dates if desde <= d <= hasta}
     days = sorted(series_days) or [
@@ -388,10 +408,10 @@ async def reconstruct_snapshots(
             continue
         breakdown = []
         total_ars = total_usd = 0.0
-        for p, moves in zip(positions, deltas):
+        for p, (fechas, suffix) in zip(positions, after_sums):
             if (p.active_from and d < p.active_from) or (p.active_until and d > p.active_until):
                 continue
-            qty = p.qty_now - sum(dq for fecha, dq in moves if fecha and fecha > d)
+            qty = p.qty_now - suffix[bisect.bisect_right(fechas, d)]
             unit = p.unit_value(d)
             if qty <= 1e-9 or not unit:
                 continue
@@ -439,16 +459,32 @@ async def reconstruct_snapshots(
     }
 
 
-async def rebuild_last_year(db: Session, user_id: int, progress: Callable[[str], None], *, dias: int = 365) -> dict:
-    """Tarea completa: operaciones del período → tenencias frescas → snapshots reconstruidos."""
+async def rebuild_history(
+    db: Session, user_id: int, progress: Callable[[str], None], *, dias: int | None = None
+) -> dict:
+    """Tarea completa: operaciones → tenencias frescas → snapshots reconstruidos.
+
+    Sin `dias`, toda la historia: trae todos los años de IOL y arranca el día de la
+    primera operación.
+    """
     today = date.today()
-    for year in range((today - timedelta(days=dias)).year, today.year + 1):
-        progress(f"Trayendo operaciones {year}")
-        await operations_service.sync_operations(db, user_id, year=year)
+    if dias is None:
+        await operations_service.sync_history(db, user_id, lambda paso: progress(f"Trayendo operaciones: {paso}"))
+        first = (
+            db.query(func.min(Operation.fecha_operada))
+            .filter(Operation.user_id == user_id, Operation.event_kind != "CAUCION")
+            .scalar()
+        )
+        desde = first - timedelta(days=1) if first else today - timedelta(days=365)
+    else:
+        desde = today - timedelta(days=dias)
+        for year in range(desde.year, today.year + 1):
+            progress(f"Trayendo operaciones {year}")
+            await operations_service.sync_operations(db, user_id, year=year)
     progress("Actualizando tenencias")
     try:
         # Las tenencias de hoy son el punto de partida: mejor que estén frescas
         await portfolio_service.refresh_holdings(db, user_id)
     except Exception as e:
-        log.warning("rebuild_last_year: refresh_holdings falló, se usan las guardadas: %s", e)
-    return await reconstruct_snapshots(db, user_id, dias=dias, progress=progress)
+        log.warning("rebuild_history: refresh_holdings falló, se usan las guardadas: %s", e)
+    return await reconstruct_snapshots(db, user_id, desde=desde, progress=progress)

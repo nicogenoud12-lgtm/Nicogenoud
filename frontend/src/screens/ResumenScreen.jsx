@@ -208,7 +208,7 @@ export default function ResumenScreen() {
               emptyAction={
                 <>
                   <button className="btn-secondary" onClick={rebuild.run} disabled={rebuild.running}>
-                    {rebuild.running ? "Reconstruyendo…" : "Reconstruir el último año"}
+                    {rebuild.running ? "Reconstruyendo…" : "Reconstruir toda la historia"}
                   </button>
                   {rebuild.running && rebuild.step && <span>{rebuild.step}</span>}
                   {rebuild.error && <span className="text-danger">{rebuild.error}</span>}

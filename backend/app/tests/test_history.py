@@ -233,3 +233,89 @@ def test_stock_split_is_rescaled(db, user, monkeypatch):
     assert antes["cantidad"] == pytest.approx(690)
     assert antes["valuacion_ars"] == pytest.approx(690 * 8_000)
     assert mucho_antes["cantidad"] == pytest.approx(600)
+
+
+def test_full_history_starts_at_first_operation(db, user, monkeypatch):
+    serie = _series({n: 5_000 for n in range(0, 75)})
+
+    class _C:
+        def __init__(self, *a, **k):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *exc):
+            return False
+
+        async def get_serie_historica(self, mercado, simbolo, **kw):
+            return serie
+
+    async def no_backfill(*a, **k):
+        return 0
+
+    async def no_sync(*a, **k):
+        return {"found": 0, "oldest": None}
+
+    async def no_refresh(*a, **k):
+        return []
+
+    monkeypatch.setattr(history_service, "IolClient", _C)
+    monkeypatch.setattr(history_service, "backfill_historical_mep", no_backfill)
+    monkeypatch.setattr(history_service.operations_service, "sync_history", no_sync)
+    monkeypatch.setattr(history_service.portfolio_service, "refresh_holdings", no_refresh)
+    db.add_all([
+        Holding(user_id=user.id, mercado="argentina", simbolo="GGAL", clase="Acción", cantidad=10,
+                valuacion_ars=50_000, valuacion_usd=50, moneda="peso_Argentino"),
+        Operation(user_id=user.id, iol_numero="30", fecha_operada=_d(50), event_kind="COMPRA", simbolo="GGAL",
+                  currency_kind="ARS", cantidad=10, precio=5_000, monto_operado=50_000, monto_neto=-50_000),
+    ])
+    db.commit()
+    res = asyncio.run(history_service.rebuild_history(db, user.id, lambda _: None))
+    # Arranca el día antes de la primera operación (antes no había nada)
+    assert res["desde"] == _d(51).isoformat()
+    first = db.query(PortfolioSnapshot).order_by(PortfolioSnapshot.date).first()
+    assert first.date == _d(50)
+
+
+def test_starts_where_mep_is_available(db, user, monkeypatch):
+    # El fixture tiene MEP sólo de los últimos 80 días: pedir 200 arranca ahí
+    serie = _series({n: 5_000 for n in range(0, 200)})
+
+    class _C:
+        def __init__(self, *a, **k):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *exc):
+            return False
+
+        async def get_serie_historica(self, mercado, simbolo, **kw):
+            return serie
+
+    async def no_backfill(*a, **k):
+        return 0
+
+    monkeypatch.setattr(history_service, "IolClient", _C)
+    monkeypatch.setattr(history_service, "backfill_historical_mep", no_backfill)
+    db.add(Holding(user_id=user.id, mercado="argentina", simbolo="GGAL", clase="Acción", cantidad=10,
+                   valuacion_ars=50_000, valuacion_usd=50, moneda="peso_Argentino"))
+    db.commit()
+    res = asyncio.run(history_service.reconstruct_snapshots(db, user.id, dias=200))
+    assert res["desde"] == _d(79).isoformat()
+
+
+def test_long_series_are_thinned_weekly():
+    from types import SimpleNamespace
+
+    from app.routers.snapshots import MAX_POINTS, _thin
+
+    rows = [SimpleNamespace(date=_d(n)) for n in range(2000, -1, -1)]
+    thin = _thin(rows)
+    assert len(thin) < MAX_POINTS
+    assert thin[-1].date == TODAY
+    weeks = [r.date.isocalendar()[:2] for r in thin]
+    assert len(weeks) == len(set(weeks))
+    assert _thin(rows[-100:]) == rows[-100:]
