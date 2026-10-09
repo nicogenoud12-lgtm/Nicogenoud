@@ -233,6 +233,9 @@ export default function OperacionesScreen() {
               {backfill.result.found
                 ? `Historial completo: ${backfill.result.found} operaciones desde ${backfill.result.oldest}. Elegí el año arriba.`
                 : "IOL no devolvió operaciones de años anteriores."}
+              {backfill.result.fallidos?.length
+                ? ` IOL dio error en ${backfill.result.fallidos.join(", ")}; podés volver a intentarlo más tarde.`
+                : ""}
             </span>
           </div>
         )}

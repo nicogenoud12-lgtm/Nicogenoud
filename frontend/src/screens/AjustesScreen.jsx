@@ -272,6 +272,9 @@ export default function AjustesScreen() {
               <span className="text-sm text-textMuted">
                 {rebuild.result.creados + rebuild.result.actualizados} días armados desde el{" "}
                 {rebuild.result.desde.split("-").reverse().join("/")}
+                {rebuild.result.anios_sin_operaciones?.length
+                  ? `. IOL dio error al traer las operaciones de ${rebuild.result.anios_sin_operaciones.join(", ")}; podés volver a intentarlo más tarde.`
+                  : ""}
               </span>
             )}
             {rebuild.error && <span className="text-sm text-danger">{rebuild.error}</span>}

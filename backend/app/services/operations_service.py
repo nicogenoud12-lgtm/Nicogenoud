@@ -2,15 +2,19 @@
 from __future__ import annotations
 
 import logging
-from datetime import date
+from datetime import date, timedelta
 from typing import Any, Callable
 
+import httpx
 from sqlalchemy.orm import Session
 
 from ..models import Operation
 from .classifier import classify_asset, classify_event
 from .dolar_service import backfill_historical_mep
-from .iol_client import IolClient
+from .iol_client import IolApiError, IolClient, RateLimitError
+
+# Errores de IOL que no son de login: un 500 o un rango que no banca
+IOL_FETCH_ERRORS = (IolApiError, httpx.HTTPError, RateLimitError)
 
 # Comisión + derechos + IVA en IOL rondan el 1%: un `monto` más de 3% arriba de
 # montoOperado no es "con comisiones", es otra unidad.
@@ -60,7 +64,7 @@ async def sync_operations(
     # movimientos) todo desde 2019 hasta hoy.
     hasta = hasta or min(date.today(), date(year, 12, 31))
     async with IolClient(db, user_id) as client:
-        ops = await client.get_operaciones(estado="terminadas", desde=desde, hasta=hasta)
+        ops = await _fetch_operaciones(client, desde, hasta)
 
     log.info("sync_operations: IOL returned %d raw rows (user=%d, year=%d)", len(ops), user_id, year)
     if not ops and year < date.today().year:
@@ -178,14 +182,71 @@ HISTORY_FLOOR_YEAR = 2000
 HISTORY_EMPTY_STREAK = 5
 
 
+def _split_range(desde: date, hasta: date, months: int) -> list[tuple[date, date]]:
+    out = []
+    start = desde
+    while start <= hasta:
+        m = start.month - 1 + months
+        nxt = date(start.year + m // 12, m % 12 + 1, 1)
+        out.append((start, min(nxt - timedelta(days=1), hasta)))
+        start = nxt
+    return out
+
+
+async def _fetch_operaciones(client: IolClient, desde: date, hasta: date) -> list:
+    """Pide las operaciones del rango; si IOL da error, por trimestres y después por meses.
+
+    IOL a veces responde 500 a un año entero (o a años viejos). Si ningún tramo
+    responde, se propaga el error para que el llamador decida.
+    """
+    try:
+        return await client.get_operaciones(estado="terminadas", desde=desde, hasta=hasta)
+    except IOL_FETCH_ERRORS as e:
+        log.warning("operaciones %s→%s fallaron (%s): se piden por trimestre", desde, hasta, e)
+
+    ops: list = []
+    failed: list[tuple[date, date]] = []
+    last_error: Exception | None = None
+    for q_desde, q_hasta in _split_range(desde, hasta, 3):
+        try:
+            ops.extend(await client.get_operaciones(estado="terminadas", desde=q_desde, hasta=q_hasta))
+        except IOL_FETCH_ERRORS as e:
+            failed.append((q_desde, q_hasta))
+            last_error = e
+    if failed and len(failed) == len(_split_range(desde, hasta, 3)):
+        raise last_error  # nada respondió: el período no está disponible
+    for q_desde, q_hasta in failed:
+        for m_desde, m_hasta in _split_range(q_desde, q_hasta, 1):
+            try:
+                ops.extend(await client.get_operaciones(estado="terminadas", desde=m_desde, hasta=m_hasta))
+            except IOL_FETCH_ERRORS as e:
+                log.warning("operaciones %s→%s no disponibles: %s", m_desde, m_hasta, e)
+    return ops
+
+
+async def sync_year_safe(db: Session, user_id: int, year: int) -> int | None:
+    """Como sync_operations, pero un error de IOL en ese año devuelve None en vez de cortar."""
+    try:
+        return await sync_operations(db, user_id, year=year)
+    except IOL_FETCH_ERRORS as e:
+        db.rollback()
+        log.warning("sync de %d falló, se saltea: %s", year, e)
+        return None
+
+
 async def sync_history(db: Session, user_id: int, progress: Callable[[str], None]) -> dict:
     """Sincroniza año por año hacia atrás hasta agotar el historial de IOL."""
     found = 0
     oldest = None
     empty_streak = 0
+    failed: list[int] = []
     for year in range(date.today().year, HISTORY_FLOOR_YEAR - 1, -1):
         progress(f"Año {year}" + (f" · {found} operaciones encontradas" if found else ""))
-        n = await sync_operations(db, user_id, year=year)
+        n = await sync_year_safe(db, user_id, year)
+        if n is None:
+            # Un año que IOL no devuelve cuenta como vacío para cortar el recorrido
+            failed.append(year)
+            n = 0
         if n > 0:
             found += n
             oldest = year
@@ -194,7 +255,9 @@ async def sync_history(db: Session, user_id: int, progress: Callable[[str], None
             empty_streak += 1
             if empty_streak >= HISTORY_EMPTY_STREAK:
                 break
-    return {"found": found, "oldest": oldest}
+    # Sólo importan los fallidos dentro del historial (los de antes de empezar son esperables)
+    failed = [y for y in failed if oldest is not None and y > oldest]
+    return {"found": found, "oldest": oldest, "fallidos": sorted(failed)}
 
 
 async def _enrich_with_movimientos(

@@ -468,8 +468,12 @@ async def rebuild_history(
     primera operación.
     """
     today = date.today()
+    failed: list[int] = []
     if dias is None:
-        await operations_service.sync_history(db, user_id, lambda paso: progress(f"Trayendo operaciones: {paso}"))
+        hist = await operations_service.sync_history(
+            db, user_id, lambda paso: progress(f"Trayendo operaciones: {paso}")
+        )
+        failed = hist.get("fallidos", [])
         first = (
             db.query(func.min(Operation.fecha_operada))
             .filter(Operation.user_id == user_id, Operation.event_kind != "CAUCION")
@@ -480,11 +484,14 @@ async def rebuild_history(
         desde = today - timedelta(days=dias)
         for year in range(desde.year, today.year + 1):
             progress(f"Trayendo operaciones {year}")
-            await operations_service.sync_operations(db, user_id, year=year)
+            if await operations_service.sync_year_safe(db, user_id, year) is None:
+                failed.append(year)
     progress("Actualizando tenencias")
     try:
         # Las tenencias de hoy son el punto de partida: mejor que estén frescas
         await portfolio_service.refresh_holdings(db, user_id)
     except Exception as e:
         log.warning("rebuild_history: refresh_holdings falló, se usan las guardadas: %s", e)
-    return await reconstruct_snapshots(db, user_id, desde=desde, progress=progress)
+    result = await reconstruct_snapshots(db, user_id, desde=desde, progress=progress)
+    result["anios_sin_operaciones"] = failed
+    return result
