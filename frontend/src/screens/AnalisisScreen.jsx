@@ -49,7 +49,13 @@ function PerformerRow({ id, name, detail, value, pct }) {
 export default function AnalisisScreen() {
   const currency = useUiStore((s) => s.currency);
   const fmt = currency === "USD" ? formatUSD : formatARS;
-  const [selectedClass, setSelectedClass] = useState(null);
+  const [selectedClass, setSelectedClassRaw] = useState(null);
+  const [selectedSymbol, setSelectedSymbol] = useState(null);
+  // Cambiar de clase descarta el activo elegido
+  const setSelectedClass = (c) => {
+    setSelectedClassRaw(c);
+    setSelectedSymbol(null);
+  };
   const [snapPeriod, setSnapPeriod] = useState("MAX");
   const [opsPeriod, setOpsPeriod] = useState("YTD");
   const [cryptoSnapPeriod, setCryptoSnapPeriod] = useState("MAX");
@@ -154,6 +160,7 @@ export default function AnalisisScreen() {
             <PortfolioLineChart
               data={snaps.data || []}
               selectedClass={selectedClass}
+              selectedSymbol={selectedSymbol}
               period={snapPeriod}
               onPeriodChange={setSnapPeriod}
               title="Evolución IOL"
@@ -164,6 +171,9 @@ export default function AnalisisScreen() {
             data={kpis.data?.distribucion_por_clase || []}
             selectedClass={selectedClass}
             onSelect={setSelectedClass}
+            assets={holdings.data || []}
+            selectedSymbol={selectedSymbol}
+            onSelectSymbol={setSelectedSymbol}
             title="Distribución IOL"
           />
         </div>

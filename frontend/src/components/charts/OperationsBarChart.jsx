@@ -53,7 +53,9 @@ export default function OperationsBarChart({
                 dataKey="simbolo"
                 width={96}
                 tickFormatter={(v) => String(v).replace(/ (US\$|USD|U\$S)$/, "")}
-                tick={{ fill: t.textSecondary, fontSize: 12 }}
+                // Una etiqueta por barra: sin intervalo, recharts saltea las que cree que se pisan
+                interval={0}
+                tick={{ fill: t.textSecondary, fontSize: 11 }}
                 axisLine={{ stroke: t.baseline }}
                 tickLine={false}
               />

@@ -25,6 +25,7 @@ const tickDecimals = (v) => {
 export default function PortfolioLineChart({
   data,
   selectedClass,
+  selectedSymbol,
   period,
   onPeriodChange,
   title,
@@ -40,6 +41,10 @@ export default function PortfolioLineChart({
   const fmt = currency === "USD" ? formatUSD : formatARS;
 
   const flowKey = currency === "USD" ? "usd" : "ars";
+  // Filtro activo: un activo puntual o una clase
+  const matches = (h) =>
+    selectedSymbol ? h.simbolo === selectedSymbol : !selectedClass || h.clase === selectedClass;
+  const filtering = Boolean(selectedSymbol || selectedClass);
 
   const series = useMemo(() => {
     // Un total en 0 nunca es real (snapshot guardado cuando falló IOL): se descarta
@@ -47,9 +52,10 @@ export default function PortfolioLineChart({
     const valid = (data || []).filter((d) => Number(d[dataKey]) > 0);
     const base = valid.map((d) => {
       // flujo = plata que entró (+) o salió (−) desde el punto anterior (compras, ventas, amortizaciones)
-      if (selectedClass && Array.isArray(d.breakdown_json) && d.breakdown_json.length > 0) {
-        const filtered = d.breakdown_json.filter((h) => h.clase === selectedClass);
-        const f = d.flujo_por_clase?.[selectedClass] || {};
+      if (filtering && Array.isArray(d.breakdown_json) && d.breakdown_json.length > 0) {
+        const filtered = d.breakdown_json.filter(matches);
+        // Por activo no hay flujo de operaciones: sale del cambio de tenencias
+        const f = selectedSymbol ? {} : d.flujo_por_clase?.[selectedClass] || {};
         return {
           ...d,
           total_ars: filtered.reduce((s, h) => s + Number(h.valuacion_ars || 0), 0),
@@ -66,10 +72,15 @@ export default function PortfolioLineChart({
         flujo_usd: Number(d.flujo_usd || 0),
       };
     });
+    // Un activo se muestra desde que entró a la cartera
+    if (selectedSymbol) {
+      const first = base.findIndex((d) => d[dataKey] > 0);
+      base.splice(0, first < 0 ? base.length : first);
+    }
     // Tenencias del punto (IOL guarda cantidad y valuación por activo); crypto no tiene cantidades
     const holdingsOf = (d) =>
       (Array.isArray(d.breakdown_json) ? d.breakdown_json : [])
-        .filter((h) => h.cantidad != null && (!selectedClass || h.clase === selectedClass))
+        .filter((h) => h.cantidad != null && matches(h))
         .map((h) => ({
           key: `${h.mercado || ""}:${h.simbolo}`,
           sym: h.simbolo,
@@ -77,9 +88,11 @@ export default function PortfolioLineChart({
           value: Number(h[`valuacion_${flowKey}`] || 0),
         }));
     const incomeOf = (d) =>
-      selectedClass
-        ? Number(d.ingreso_por_clase?.[selectedClass]?.[flowKey] || 0)
-        : Number(d[`ingreso_${flowKey}`] || 0);
+      selectedSymbol
+        ? Number(d.ingreso_por_simbolo?.[selectedSymbol]?.[flowKey] || 0)
+        : selectedClass
+          ? Number(d.ingreso_por_clase?.[selectedClass]?.[flowKey] || 0)
+          : Number(d[`ingreso_${flowKey}`] || 0);
     const perf = portfolioReturns(
       base.map((d) => ({
         value: d[dataKey],
@@ -92,7 +105,7 @@ export default function PortfolioLineChart({
       }))
     );
     return base.map((d, i) => ({ ...d, ...perf[i] }));
-  }, [data, selectedClass, dataKey, flowKey]);
+  }, [data, selectedClass, selectedSymbol, dataKey, flowKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const byDate = useMemo(() => {
     const m = new Map();
@@ -132,7 +145,7 @@ export default function PortfolioLineChart({
     const valueBySym = (d) => {
       const m = new Map();
       for (const h of Array.isArray(d.breakdown_json) ? d.breakdown_json : []) {
-        if (selectedClass && h.clase !== selectedClass) continue;
+        if (!matches(h)) continue;
         m.set(h.simbolo, (m.get(h.simbolo) || 0) + Number(h[`valuacion_${flowKey}`] || 0));
       }
       return m;
@@ -247,7 +260,9 @@ export default function PortfolioLineChart({
         <div className="min-w-0">
           <h2 className="section-title">
             {title || "Evolución de cartera"}
-            {selectedClass && <span className="ml-1.5 font-normal text-textMuted">· {selectedClass}</span>}
+            {(selectedSymbol || selectedClass) && (
+              <span className="ml-1.5 font-normal text-textMuted">· {selectedSymbol || selectedClass}</span>
+            )}
           </h2>
           <div className="text-xs text-textMuted mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1">
             <span>{isPerf ? "Rendimiento sin compras ni ventas" : currency}</span>
