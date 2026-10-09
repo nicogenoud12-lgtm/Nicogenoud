@@ -5,7 +5,7 @@ export const PERIODS = [
   { label: "6M",  days: 180,  title: "Últimos 6 meses" },
   { label: "YTD", days: null, title: "Lo que va del año" },
   { label: "12M", days: 365,  title: "Últimos 12 meses" },
-  { label: "MAX", days: 3650, title: "Histórico completo" },
+  { label: "MAX", days: 36500, title: "Histórico completo" },
 ];
 
 function ytdDays() {

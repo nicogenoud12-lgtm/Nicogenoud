@@ -22,7 +22,7 @@ _USD_MARKER = re.compile(r"\s+(US\$|USD|U\$S)$", re.IGNORECASE)
 
 @router.get("", response_model=list[SnapshotOut])
 def list_snapshots(
-    days: int = Query(default=180, ge=1, le=3650),
+    days: int = Query(default=180, ge=1, le=36500),
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -40,6 +40,7 @@ def list_snapshots(
     )
     if not rows:
         return []
+    rows = _thin(rows)
     # El primer punto necesita el snapshot anterior (fuera de la ventana) como base
     before = (
         db.query(PortfolioSnapshot.date)
@@ -52,6 +53,22 @@ def list_snapshots(
         .first()
     )
     return _with_flows(db, user.id, rows, before[0] if before else None)
+
+
+# Con años de historia diaria el gráfico se vuelve pesado: más allá de esto, un punto por
+# semana (el último). Los flujos y cobros se suman por tramo, así que no se pierde nada.
+MAX_POINTS = 800
+
+
+def _thin(rows: list) -> list:
+    if len(rows) <= MAX_POINTS:
+        return rows
+    out = []
+    for i, r in enumerate(rows):
+        last = i == len(rows) - 1
+        if last or r.date.isocalendar()[:2] != rows[i + 1].date.isocalendar()[:2]:
+            out.append(r)
+    return out
 
 
 def _with_flows(db: Session, user_id: int, rows: list, prev_date: date | None) -> list[SnapshotOut]:
@@ -157,7 +174,8 @@ async def run_now(user: User = Depends(get_current_user), db: Session = Depends(
 
 @router.post("/reconstruct")
 async def reconstruct(
-    dias: int = Query(default=365, ge=7, le=3650),
+    # Sin días: toda la historia, desde la primera operación
+    dias: int | None = Query(default=None, ge=7, le=36500),
     user: User = Depends(get_current_user),
 ):
     """Lanza en segundo plano la reconstrucción de la evolución diaria; devuelve el estado."""
@@ -165,7 +183,7 @@ async def reconstruct(
     uid = user.id
 
     async def job(db, progress):
-        return await history_service.rebuild_last_year(db, uid, progress, dias=dias)
+        return await history_service.rebuild_history(db, uid, progress, dias=dias)
 
     return background.start(uid, "reconstruct", job)
 

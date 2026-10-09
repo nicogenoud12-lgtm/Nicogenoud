@@ -210,7 +210,7 @@ async def report(
 
 @router.get("/snapshots", response_model=list[CryptoSnapshotOut])
 def list_snapshots(
-    days: int = Query(default=180, ge=1, le=3650),
+    days: int = Query(default=180, ge=1, le=36500),
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):

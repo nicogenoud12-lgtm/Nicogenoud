@@ -95,8 +95,7 @@ export default function AjustesScreen() {
   const runSnap = useMutation({
     mutationFn: runSnapshotNow,
     onSuccess: (snap) => {
-      qc.invalidateQueries({ queryKey: ["snapshots", 90] });
-      qc.invalidateQueries({ queryKey: ["snapshots", 3650] });
+      qc.invalidateQueries({ queryKey: ["snapshots"] });
       setFeedback({
         type: "ok",
         text: `Snapshot creado para ${snap?.date || "hoy"}`,
@@ -262,11 +261,11 @@ export default function AjustesScreen() {
 
         <SettingsSection
           title="Evolución histórica"
-          description="Arma la evolución diaria del último año a partir de las tenencias actuales, las operaciones y los precios históricos de IOL. No pisa los snapshots reales; se puede volver a correr. Los FCI se valúan a la cuotaparte actual."
+          description="Arma la evolución diaria desde la primera operación en IOL, a partir de las tenencias actuales, todas las operaciones y los precios históricos. No pisa los snapshots reales; se puede volver a correr. Los FCI se valúan a la cuotaparte actual."
         >
           <div className="flex flex-wrap items-center gap-3">
             <button className="btn-secondary" onClick={rebuild.run} disabled={rebuild.running}>
-              {rebuild.running ? "Reconstruyendo…" : "Reconstruir el último año"}
+              {rebuild.running ? "Reconstruyendo…" : "Reconstruir toda la historia"}
             </button>
             {rebuild.running && rebuild.step && <span className="text-sm text-textMuted">{rebuild.step}</span>}
             {rebuild.result && (
