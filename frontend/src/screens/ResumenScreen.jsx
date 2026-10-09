@@ -117,7 +117,13 @@ function UpcomingPayments({ events }) {
 export default function ResumenScreen() {
   const currency = useUiStore((s) => s.currency);
   const fmt = currency === "USD" ? formatUSD : formatARS;
-  const [selectedClass, setSelectedClass] = useState(null);
+  const [selectedClass, setSelectedClassRaw] = useState(null);
+  const [selectedSymbol, setSelectedSymbol] = useState(null);
+  // Cambiar de clase descarta el activo elegido
+  const setSelectedClass = (c) => {
+    setSelectedClassRaw(c);
+    setSelectedSymbol(null);
+  };
   const [snapPeriod, setSnapPeriod] = useState("3M");
   const snapDays = periodToDays(snapPeriod);
 
@@ -202,6 +208,7 @@ export default function ResumenScreen() {
             <PortfolioLineChart
               data={snaps.data || []}
               selectedClass={selectedClass}
+              selectedSymbol={selectedSymbol}
               period={snapPeriod}
               onPeriodChange={setSnapPeriod}
               className="h-full min-h-[22rem]"
@@ -220,6 +227,9 @@ export default function ResumenScreen() {
             data={k.distribucion_por_clase || []}
             selectedClass={selectedClass}
             onSelect={setSelectedClass}
+            assets={holdings.data || []}
+            selectedSymbol={selectedSymbol}
+            onSelectSymbol={setSelectedSymbol}
           />
         </div>
 

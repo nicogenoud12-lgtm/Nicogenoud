@@ -165,6 +165,8 @@ class SnapshotOut(BaseModel):
     ingreso_por_clase: dict[str, dict[str, float]] = {}
     # Amortizaciones cobradas en el tramo, por símbolo de la tenencia
     amort_por_simbolo: dict[str, dict[str, float]] = {}
+    # Renta + dividendos del tramo por símbolo (rendimiento de un activo puntual)
+    ingreso_por_simbolo: dict[str, dict[str, float]] = {}
 
     class Config:
         from_attributes = True

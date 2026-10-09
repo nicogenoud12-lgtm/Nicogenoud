@@ -140,6 +140,7 @@ def _with_flows(db: Session, user_id: int, rows: list, prev_date: date | None) -
             snap.flujo_ars, snap.flujo_usd, snap.flujo_por_clase = window_totals(flows, prev_date, r.date)
             snap.ingreso_ars, snap.ingreso_usd, snap.ingreso_por_clase = window_totals(incomes, prev_date, r.date)
             snap.amort_por_simbolo = by_symbol(amorts, prev_date, r.date)
+            snap.ingreso_por_simbolo = by_symbol(incomes, prev_date, r.date)
         out.append(snap)
         prev_date = r.date
     return out
