@@ -6,3 +6,4 @@ export const runSnapshotNow = () =>
   api.post("/snapshots/run-now").then((r) => r.data);
 export const reconstructSnapshots = (dias = 365) =>
   api.post("/snapshots/reconstruct", null, { params: { dias } }).then((r) => r.data);
+export const reconstructStatus = () => api.get("/snapshots/reconstruct").then((r) => r.data);

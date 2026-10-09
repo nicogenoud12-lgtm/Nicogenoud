@@ -112,10 +112,10 @@ Nicogenoud/
 | auth | `POST /auth/login`, `GET /auth/me` |
 | iol | `POST /iol/connect`, `GET /iol/status`, `POST /iol/disconnect`, `POST /iol/refresh` |
 | portfolio | `GET /portfolio/holdings?refresh=`, `GET /portfolio/kpis`, `GET /portfolio/accounts` |
-| operations | `GET /operations?year=`, `GET /operations/years`, `POST /operations/sync?year=`, `GET /operations/summary?year=` (year default = año en curso) |
+| operations | `GET /operations?year=`, `GET /operations/years`, `POST /operations/sync?year=`, `POST\|GET /operations/sync-history` (segundo plano), `GET /operations/summary?year=` (year default = año en curso) |
 | dolar | `GET /dolar/current?source=`, `GET /dolar/history`, **`POST /dolar/backfill?desde=&hasta=`** |
 | settings | `GET /settings`, `PUT /settings` |
-| snapshots | `GET /snapshots`, `POST /snapshots/run-now`, **`POST /snapshots/reconstruct?dias=`**, `DELETE /snapshots/{id}` |
+| snapshots | `GET /snapshots`, `POST /snapshots/run-now`, **`POST\|GET /snapshots/reconstruct`** (tarea en segundo plano), `DELETE /snapshots/{id}` |
 
 Todos requieren `Depends(get_current_user)` excepto `/auth/login`.
 
@@ -153,7 +153,11 @@ El frontend togglea entre `total_*_ars` y `total_*_usd` según `useUiStore`. Sin
 
 ### Evolución reconstruida (`services/history_service.py`)
 
-"Reconstruir el último año" (Resumen con gráfico vacío, o Ajustes) arma snapshots diarios hacia atrás: el frontend sincroniza las operaciones de los años del período y después llama `POST /snapshots/reconstruct`. Parte de las tenencias actuales (refresca antes), deshace compras/ventas/suscripciones/rescates para obtener la cantidad de cada día y la valúa con `seriehistorica` de IOL (sin ajustar). Cada posición se calibra contra la valuación actual (`factor = valuación / (cantidad × último precio)`, así los bonos que cotizan cada 100 VN quedan bien). Operaciones con sufijo de moneda (`AL30D`) suman a la tenencia base (`AL30`). Posiciones ya vendidas se agrupan por base y su factor sale de sus operaciones. **FCI no tiene serie**: se valúa a la cuotaparte actual (rendimiento pasado 0) y sus movimientos se toman por monto. Los snapshots quedan con `source="reconstruido"`, **nunca pisan uno real** y se pueden regenerar. El gráfico muestra "Reconstruido hasta el …".
+"Reconstruir el último año" (Resumen con gráfico vacío, o Ajustes) arma snapshots diarios hacia atrás: `POST /snapshots/reconstruct` lanza en segundo plano `history_service.rebuild_last_year` (sincroniza las operaciones de los años del período, refresca tenencias y reconstruye). Parte de las tenencias actuales (refresca antes), deshace compras/ventas/suscripciones/rescates para obtener la cantidad de cada día y la valúa con `seriehistorica` de IOL (sin ajustar). Cada posición se calibra contra la valuación actual (`factor = valuación / (cantidad × último precio)`, así los bonos que cotizan cada 100 VN quedan bien). Operaciones con sufijo de moneda (`AL30D`) suman a la tenencia base (`AL30`). Posiciones ya vendidas se agrupan por base y su factor sale de sus operaciones. **FCI no tiene serie**: se valúa a la cuotaparte actual (rendimiento pasado 0) y sus movimientos se toman por monto. Los snapshots quedan con `source="reconstruido"`, **nunca pisan uno real** y se pueden regenerar. El gráfico muestra "Reconstruido hasta el …".
+
+### Tareas largas en segundo plano (`services/background.py`)
+
+**Cloudflare Tunnel corta los requests a los ~100 s** (no configurable), y nginx a los 300 s. Todo lo que pueda tardar más (historial, reconstrucción) va por `background.start(user_id, kind, fn)`: el POST lanza la tarea y devuelve `{estado, paso, resultado, error}`; el GET del mismo path devuelve el estado. En el frontend, `hooks/useBackgroundJob.js` lanza, consulta cada 2 s mientras `estado == "corriendo"` e invalida las queries al terminar. Registro en memoria (uvicorn con un solo proceso); las tareas son idempotentes, así que si el backend se reinicia se vuelven a lanzar. Los endpoints que lanzan tienen que ser `async def` (`asyncio.create_task` necesita el event loop).
 
 ### IOL keep-alive
 
@@ -166,7 +170,7 @@ Job `iol_keepalive.py` corre cada 12h. Si `refresh_expires_at` está a <7 días,
 3. `_enrich_with_movimientos`: cruza con IOL `/movimientos` para obtener el **neto** post-retención de dividendos/renta (IOL `/operaciones` da el **bruto**).
 4. `backfill_historical_mep`: trae MEP histórico de ArgentinaDatos para todo el año.
 
-**Historial completo** ("Traer historial" en Operaciones): el frontend recorre los años hacia atrás llamando `POST /operations/sync?year=Y` uno por uno (progreso visible, sin timeouts largos). Corta tras 5 años seguidos vacíos una vez encontrada alguna operación, o en 2000. Un año pasado se sincroniza sólo `1/1 → 31/12` y, si viene vacío, no pide movimientos. El selector de año sale de `GET /operations/years`. nginx tiene `proxy_read_timeout 300s` porque un año completo de movimientos puede pasar el minuto.
+**Historial completo** ("Traer historial" en Operaciones): `POST /operations/sync-history` lanza en segundo plano `operations_service.sync_history`, que recorre los años hacia atrás llamando `sync_operations` por año. Corta tras 5 años seguidos vacíos una vez encontrada alguna operación, o en 2000. Un año pasado se sincroniza sólo `1/1 → 31/12` y, si viene vacío, no pide movimientos. El selector de año sale de `GET /operations/years`.
 
 ## 🛠️ Tests
 

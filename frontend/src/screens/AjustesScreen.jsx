@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { iolConnect, iolDisconnect, iolRefresh, iolStatus } from "../api/iol";
 import { getSettings, updateSettings } from "../api/settings";
 import { runSnapshotNow } from "../api/snapshots";
-import { reconstructErrorText, useReconstructHistory } from "../hooks/useReconstructHistory";
+import { useReconstructHistory } from "../hooks/useReconstructHistory";
 import LoadingSpinner from "../components/LoadingSpinner.jsx";
 import PageHeader from "../components/PageHeader.jsx";
 import { formatDate } from "../utils/format";
@@ -265,16 +265,17 @@ export default function AjustesScreen() {
           description="Arma la evolución diaria del último año a partir de las tenencias actuales, las operaciones y los precios históricos de IOL. No pisa los snapshots reales; se puede volver a correr. Los FCI se valúan a la cuotaparte actual."
         >
           <div className="flex flex-wrap items-center gap-3">
-            <button className="btn-secondary" onClick={() => rebuild.mutate()} disabled={rebuild.isPending}>
-              {rebuild.isPending ? rebuild.step : "Reconstruir el último año"}
+            <button className="btn-secondary" onClick={rebuild.run} disabled={rebuild.running}>
+              {rebuild.running ? "Reconstruyendo…" : "Reconstruir el último año"}
             </button>
-            {rebuild.isSuccess && (
+            {rebuild.running && rebuild.step && <span className="text-sm text-textMuted">{rebuild.step}</span>}
+            {rebuild.result && (
               <span className="text-sm text-textMuted">
-                {rebuild.data.creados + rebuild.data.actualizados} días armados desde el{" "}
-                {rebuild.data.desde.split("-").reverse().join("/")}
+                {rebuild.result.creados + rebuild.result.actualizados} días armados desde el{" "}
+                {rebuild.result.desde.split("-").reverse().join("/")}
               </span>
             )}
-            {rebuild.isError && <span className="text-sm text-danger">{reconstructErrorText(rebuild.error)}</span>}
+            {rebuild.error && <span className="text-sm text-danger">{rebuild.error}</span>}
           </div>
         </SettingsSection>
       </div>

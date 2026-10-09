@@ -22,10 +22,12 @@ import re
 import statistics
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta, timezone
+from typing import Callable
 
 from sqlalchemy.orm import Session
 
 from ..models import Holding, Operation, PortfolioSnapshot
+from . import operations_service, portfolio_service
 from .classifier import _INTRINSIC_SUFFIX_TICKERS, classify_asset
 from .dolar_service import backfill_historical_mep, build_mep_lookup, fx_for_date
 from .iol_client import IolClient
@@ -202,7 +204,9 @@ async def _fetch_series(client: IolClient, p: _Position, desde: date, hasta: dat
             return
 
 
-async def reconstruct_snapshots(db: Session, user_id: int, *, dias: int = 365) -> dict:
+async def reconstruct_snapshots(
+    db: Session, user_id: int, *, dias: int = 365, progress: Callable[[str], None] | None = None
+) -> dict:
     today = date.today()
     desde = today - timedelta(days=dias)
     hasta = today - timedelta(days=1)
@@ -223,8 +227,12 @@ async def reconstruct_snapshots(db: Session, user_id: int, *, dias: int = 365) -
 
     # Precios desde un poco antes para tener valor el primer día aunque sea feriado
     async with IolClient(db, user_id) as client:
-        for p in positions:
+        for i, p in enumerate(positions, 1):
+            if progress:
+                progress(f"Precios históricos {i}/{len(positions)}: {p.simbolo}")
             await _fetch_series(client, p, desde - timedelta(days=10), today)
+    if progress:
+        progress("Armando la evolución día por día")
 
     await backfill_historical_mep(db, desde=desde - timedelta(days=10), hasta=today)
     mep = build_mep_lookup(db, desde, today)
@@ -321,3 +329,18 @@ async def reconstruct_snapshots(db: Session, user_id: int, *, dias: int = 365) -
         "hasta": hasta.isoformat(),
         "sin_serie": sin_serie,
     }
+
+
+async def rebuild_last_year(db: Session, user_id: int, progress: Callable[[str], None], *, dias: int = 365) -> dict:
+    """Tarea completa: operaciones del período → tenencias frescas → snapshots reconstruidos."""
+    today = date.today()
+    for year in range((today - timedelta(days=dias)).year, today.year + 1):
+        progress(f"Trayendo operaciones {year}")
+        await operations_service.sync_operations(db, user_id, year=year)
+    progress("Actualizando tenencias")
+    try:
+        # Las tenencias de hoy son el punto de partida: mejor que estén frescas
+        await portfolio_service.refresh_holdings(db, user_id)
+    except Exception as e:
+        log.warning("rebuild_last_year: refresh_holdings falló, se usan las guardadas: %s", e)
+    return await reconstruct_snapshots(db, user_id, dias=dias, progress=progress)

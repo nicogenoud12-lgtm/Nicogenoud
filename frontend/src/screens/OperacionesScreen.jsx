@@ -1,6 +1,14 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
-import { listOperations, operationsSummary, operationYears, syncOperations } from "../api/operations";
+import {
+  listOperations,
+  operationsSummary,
+  operationYears,
+  syncHistory,
+  syncHistoryStatus,
+  syncOperations,
+} from "../api/operations";
+import { useBackgroundJob } from "../hooks/useBackgroundJob";
 import DataTable from "../components/DataTable.jsx";
 import KpiCard from "../components/KpiCard.jsx";
 import LoadingSpinner from "../components/LoadingSpinner.jsx";
@@ -21,11 +29,6 @@ const KIND_LABEL = {
 };
 const CURRENCY_LABEL = { ARS: "ARS", USD_MEP: "USD MEP", USD_CABLE: "USD Cable" };
 
-// Recorrido del historial hacia atrás: se corta tras varios años seguidos sin
-// operaciones (una vez encontrada alguna) o al llegar al piso.
-const HISTORY_FLOOR_YEAR = 2000;
-const HISTORY_EMPTY_STREAK = 5;
-
 export default function OperacionesScreen() {
   const currency = useUiStore((s) => s.currency);
   const qc = useQueryClient();
@@ -34,7 +37,6 @@ export default function OperacionesScreen() {
   // Años con operaciones guardadas (incluye el actual aunque todavía no haya datos)
   const years = yearsQ.data?.length ? yearsQ.data : [currentYear];
   const [year, setYear] = useState(currentYear);
-  const [progress, setProgress] = useState(null);
   const [kinds, setKinds] = useState([]);
   const [search, setSearch] = useState("");
 
@@ -54,30 +56,11 @@ export default function OperacionesScreen() {
     },
   });
 
-  const backfill = useMutation({
-    mutationFn: async () => {
-      let found = 0;
-      let emptyStreak = 0;
-      let oldest = null;
-      for (let y = currentYear; y >= HISTORY_FLOOR_YEAR; y--) {
-        setProgress({ year: y, found });
-        const r = await syncOperations(y);
-        if (r.synced > 0) {
-          found += r.synced;
-          oldest = y;
-          emptyStreak = 0;
-        } else if (found > 0 && ++emptyStreak >= HISTORY_EMPTY_STREAK) {
-          break;
-        }
-      }
-      return { found, oldest };
-    },
-    onSettled: () => {
-      setProgress(null);
-      qc.invalidateQueries({ queryKey: ["opYears"] });
-      qc.invalidateQueries({ queryKey: ["operations"] });
-      qc.invalidateQueries({ queryKey: ["opsSummary"] });
-    },
+  const backfill = useBackgroundJob({
+    key: "sync-history",
+    start: syncHistory,
+    fetchStatus: syncHistoryStatus,
+    invalidate: [["opYears"], ["operations"], ["opsSummary"]],
   });
 
   const toggleKind = (k) =>
@@ -212,16 +195,16 @@ export default function OperacionesScreen() {
             />
             <button
               className="btn-secondary"
-              onClick={() => backfill.mutate()}
-              disabled={backfill.isPending || sync.isPending}
+              onClick={backfill.run}
+              disabled={backfill.running || sync.isPending}
               title="Trae de IOL las operaciones, rentas, dividendos y amortizaciones de todos los años"
             >
-              {backfill.isPending ? `Trayendo ${progress?.year ?? ""}…` : "Traer historial"}
+              {backfill.running ? "Trayendo historial…" : "Traer historial"}
             </button>
             <button
               className="btn-primary"
               onClick={() => sync.mutate()}
-              disabled={sync.isPending || backfill.isPending}
+              disabled={sync.isPending || backfill.running}
             >
               {sync.isPending ? "Sincronizando…" : "Sincronizar"}
             </button>
@@ -230,30 +213,29 @@ export default function OperacionesScreen() {
       />
 
       <div className="space-y-4">
-        {backfill.isPending && (
+        {backfill.running && (
           <div className="notice" role="status">
             <span>
-              Trayendo el historial de IOL año por año: {progress?.year}
-              {progress?.found ? ` · ${progress.found} operaciones encontradas` : ""}. Puede tardar unos minutos.
+              Trayendo el historial de IOL año por año{backfill.step ? `: ${backfill.step}` : ""}. Puede tardar
+              unos minutos; podés seguir usando la app.
             </span>
           </div>
         )}
-        {backfill.isSuccess && (
+        {backfill.result && (
           <div className="notice" role="status">
             <span>
-              {backfill.data.found
-                ? `Historial completo: ${backfill.data.found} operaciones desde ${backfill.data.oldest}. Elegí el año arriba.`
+              {backfill.result.found
+                ? `Historial completo: ${backfill.result.found} operaciones desde ${backfill.result.oldest}. Elegí el año arriba.`
                 : "IOL no devolvió operaciones de años anteriores."}
             </span>
           </div>
         )}
-        {backfill.isError && (
+        {backfill.error && (
           <div className="notice" role="alert">
             <span className="text-danger font-medium">Error</span>
             <span>
-              No se pudo terminar de traer el historial
-              {backfill.error?.response?.data?.detail ? ` (${backfill.error.response.data.detail})` : ""}. Lo ya
-              traído quedó guardado; podés volver a intentarlo.
+              No se pudo terminar de traer el historial ({backfill.error}). Lo ya traído quedó guardado; podés
+              volver a intentarlo.
             </span>
           </div>
         )}

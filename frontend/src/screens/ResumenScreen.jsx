@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { getKpis, getHoldings, getUpcomingEvents } from "../api/portfolio";
 import { listSnapshots } from "../api/snapshots";
-import { reconstructErrorText, useReconstructHistory } from "../hooks/useReconstructHistory";
+import { useReconstructHistory } from "../hooks/useReconstructHistory";
 import Card from "../components/Card.jsx";
 import Delta from "../components/Delta.jsx";
 import KpiCard from "../components/KpiCard.jsx";
@@ -207,10 +207,11 @@ export default function ResumenScreen() {
               className="h-full min-h-[22rem]"
               emptyAction={
                 <>
-                  <button className="btn-secondary" onClick={() => rebuild.mutate()} disabled={rebuild.isPending}>
-                    {rebuild.isPending ? rebuild.step : "Reconstruir el último año"}
+                  <button className="btn-secondary" onClick={rebuild.run} disabled={rebuild.running}>
+                    {rebuild.running ? "Reconstruyendo…" : "Reconstruir el último año"}
                   </button>
-                  {rebuild.isError && <span className="text-danger">{reconstructErrorText(rebuild.error)}</span>}
+                  {rebuild.running && rebuild.step && <span>{rebuild.step}</span>}
+                  {rebuild.error && <span className="text-danger">{rebuild.error}</span>}
                 </>
               }
             />
