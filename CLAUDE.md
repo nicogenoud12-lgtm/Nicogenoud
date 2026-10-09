@@ -170,7 +170,7 @@ Job `iol_keepalive.py` corre cada 12h. Si `refresh_expires_at` está a <7 días,
 3. `_enrich_with_movimientos`: cruza con IOL `/movimientos` para obtener el **neto** post-retención de dividendos/renta (IOL `/operaciones` da el **bruto**).
 4. `backfill_historical_mep`: trae MEP histórico de ArgentinaDatos para todo el año.
 
-**Historial completo** ("Traer historial" en Operaciones): `POST /operations/sync-history` lanza en segundo plano `operations_service.sync_history`, que recorre los años hacia atrás llamando `sync_operations` por año. Corta tras 5 años seguidos vacíos una vez encontrada alguna operación, o en 2000. Un año pasado se sincroniza sólo `1/1 → 31/12` y, si viene vacío, no pide movimientos. El selector de año sale de `GET /operations/years`.
+**Historial completo** ("Traer historial" en Operaciones): `POST /operations/sync-history` lanza en segundo plano `operations_service.sync_history`, que recorre los años hacia atrás llamando `sync_operations` por año. Corta tras 5 años seguidos vacíos una vez encontrada alguna operación, o en 2000. Un año pasado se sincroniza sólo `1/1 → 31/12` y, si viene vacío, no pide movimientos. **IOL a veces responde 500** a un año entero o a años viejos: `_fetch_operaciones` reintenta por trimestres y, si algún trimestre falla, por meses; `sync_year_safe` saltea un año que no responde (cuenta como vacío) y lo informa en `fallidos` / `anios_sin_operaciones`, así un error no corta toda la tarea. El selector de año sale de `GET /operations/years`.
 
 ## 🛠️ Tests
 

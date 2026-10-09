@@ -60,6 +60,65 @@ def test_sync_history_stops_after_empty_streak(monkeypatch):
 
     monkeypatch.setattr(operations_service, "sync_operations", fake_sync)
     res = asyncio.run(operations_service.sync_history(None, 1, lambda _: None))
-    assert res == {"found": 6, "oldest": this_year - 3}
+    assert res == {"found": 6, "oldest": this_year - 3, "fallidos": []}
     # Tras el último año con datos, 5 años vacíos y corta
     assert asked[-1] == this_year - 3 - operations_service.HISTORY_EMPTY_STREAK
+
+
+def test_operaciones_fall_back_to_quarters_and_months():
+    from datetime import date
+
+    from app.services.iol_client import IolApiError
+
+    calls = []
+
+    class _Client:
+        async def get_operaciones(self, *, estado, desde, hasta):
+            calls.append((desde, hasta))
+            if (hasta - desde).days > 100:  # un año entero: 500
+                raise IolApiError(500, "error")
+            if desde == date(2019, 4, 1) and hasta == date(2019, 6, 30):  # un trimestre puntual
+                raise IolApiError(500, "error")
+            if desde == date(2019, 5, 1):  # un mes puntual
+                raise IolApiError(500, "error")
+            return [{"numero": f"{desde}"}]
+
+    ops = asyncio.run(operations_service._fetch_operaciones(_Client(), date(2019, 1, 1), date(2019, 12, 31)))
+    # 3 trimestres que andan + abril y junio del que falló (mayo no está disponible)
+    assert [o["numero"] for o in ops] == ["2019-01-01", "2019-07-01", "2019-10-01", "2019-04-01", "2019-06-01"]
+
+
+def test_operaciones_raise_when_nothing_answers():
+    from datetime import date
+
+    import pytest
+
+    from app.services.iol_client import IolApiError
+
+    class _Client:
+        async def get_operaciones(self, **kw):
+            raise IolApiError(500, "error")
+
+    with pytest.raises(IolApiError):
+        asyncio.run(operations_service._fetch_operaciones(_Client(), date(2010, 1, 1), date(2010, 12, 31)))
+
+
+def test_sync_history_skips_years_that_fail(monkeypatch):
+    from datetime import date
+
+    from app.services.iol_client import IolApiError
+
+    this_year = date.today().year
+
+    async def fake_sync(db, user_id, *, year):
+        if year == this_year - 1:
+            raise IolApiError(500, "error")
+        return 4 if year in (this_year, this_year - 2) else 0
+
+    class _Db:
+        def rollback(self):
+            pass
+
+    monkeypatch.setattr(operations_service, "sync_operations", fake_sync)
+    res = asyncio.run(operations_service.sync_history(_Db(), 1, lambda _: None))
+    assert res == {"found": 8, "oldest": this_year - 2, "fallidos": [this_year - 1]}
