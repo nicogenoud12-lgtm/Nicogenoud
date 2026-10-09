@@ -319,3 +319,53 @@ def test_long_series_are_thinned_weekly():
     weeks = [r.date.isocalendar()[:2] for r in thin]
     assert len(weeks) == len(set(weeks))
     assert _thin(rows[-100:]) == rows[-100:]
+
+
+def test_fci_unit_value_comes_from_subscriptions(db, user, monkeypatch):
+    class _C:
+        def __init__(self, *a, **k):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *exc):
+            return False
+
+        async def get_serie_historica(self, mercado, simbolo, **kw):
+            if simbolo == "GGAL":  # una acción con serie diaria fija los días
+                return _series({n: 5_000 for n in range(0, 80)})
+            raise RuntimeError("404")  # IOL no tiene serie de FCI
+
+    async def no_backfill(*a, **k):
+        return 0
+
+    monkeypatch.setattr(history_service, "IolClient", _C)
+    monkeypatch.setattr(history_service, "backfill_historical_mep", no_backfill)
+    # Fondo en pesos: cuotaparte 1,0 hace 60 días, 1,2 hace 30, 1,4 hoy
+    db.add_all([
+        Holding(user_id=user.id, mercado="argentina", simbolo="GGAL", clase="Acción", cantidad=1,
+                valuacion_ars=5_000, valuacion_usd=5, moneda="peso_Argentino"),
+        Holding(user_id=user.id, mercado="argentina", simbolo="IOLPORA", clase="FCI", cantidad=2_000,
+                valuacion_ars=2_800, valuacion_usd=2.8, moneda="peso_Argentino"),
+        Operation(user_id=user.id, iol_numero="40", fecha_operada=_d(60), event_kind="SUSCRIPCION",
+                  simbolo="IOLPORA", currency_kind="ARS", cantidad=1_000, precio=1.0,
+                  monto_operado=1_000, monto_neto=-1_000),
+        Operation(user_id=user.id, iol_numero="41", fecha_operada=_d(30), event_kind="SUSCRIPCION",
+                  simbolo="IOLPORA", currency_kind="ARS", cantidad=1_000, precio=1.2,
+                  monto_operado=1_200, monto_neto=-1_200),
+    ])
+    db.commit()
+    asyncio.run(history_service.reconstruct_snapshots(db, user.id, dias=70))
+
+    def fci(n):
+        return _by_sym(_snap(db, n)).get("IOLPORA")
+
+    assert fci(65) is None  # antes de la primera suscripción no había
+    assert fci(60)["cantidad"] == pytest.approx(1_000)
+    assert fci(60)["valuacion_ars"] == pytest.approx(1_000)
+    # A mitad de camino entre 1,0 y 1,2: crecimiento compuesto
+    assert fci(45)["valuacion_ars"] == pytest.approx(1_000 * (1.2 ** 0.5), rel=1e-3)
+    assert fci(30)["cantidad"] == pytest.approx(2_000)
+    assert fci(30)["valuacion_ars"] == pytest.approx(2_400)
+    assert fci(1)["valuacion_ars"] == pytest.approx(2_000 * 1.2 * (1.4 / 1.2) ** (29 / 30), rel=1e-3)
