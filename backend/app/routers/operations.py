@@ -1,6 +1,7 @@
 from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import extract
 from sqlalchemy.orm import Session
 
 from ..database import get_db
@@ -64,6 +65,23 @@ def list_operations(
         result.append(out)
 
     return result
+
+
+@router.get("/years", response_model=list[int])
+def operation_years(
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Años con operaciones guardadas (más el actual), del más reciente al más viejo."""
+    rows = (
+        db.query(extract("year", Operation.fecha_operada))
+        .filter(Operation.user_id == user.id, Operation.fecha_operada.isnot(None))
+        .distinct()
+        .all()
+    )
+    years = {int(y) for (y,) in rows if y is not None}
+    years.add(date.today().year)
+    return sorted(years, reverse=True)
 
 
 @router.post("/sync")

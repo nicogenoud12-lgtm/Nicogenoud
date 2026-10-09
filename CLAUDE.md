@@ -111,7 +111,7 @@ Nicogenoud/
 | auth | `POST /auth/login`, `GET /auth/me` |
 | iol | `POST /iol/connect`, `GET /iol/status`, `POST /iol/disconnect`, `POST /iol/refresh` |
 | portfolio | `GET /portfolio/holdings?refresh=`, `GET /portfolio/kpis`, `GET /portfolio/accounts` |
-| operations | `GET /operations?year=`, `POST /operations/sync?year=`, `GET /operations/summary?year=` (year default = año en curso) |
+| operations | `GET /operations?year=`, `GET /operations/years`, `POST /operations/sync?year=`, `GET /operations/summary?year=` (year default = año en curso) |
 | dolar | `GET /dolar/current?source=`, `GET /dolar/history`, **`POST /dolar/backfill?desde=&hasta=`** |
 | settings | `GET /settings`, `PUT /settings` |
 | snapshots | `GET /snapshots`, `POST /snapshots/run-now`, `DELETE /snapshots/{id}` |
@@ -160,6 +160,8 @@ Job `iol_keepalive.py` corre cada 12h. Si `refresh_expires_at` está a <7 días,
 2. Upsert por `iol_numero`. **Importante**: usar `cantidadOperada` antes de `cantidad` (este último es VN nominal para bonos, no cantidad ejecutada). Calcular `monto_neto` desde `montoOperado ± fees`, signo según event_kind.
 3. `_enrich_with_movimientos`: cruza con IOL `/movimientos` para obtener el **neto** post-retención de dividendos/renta (IOL `/operaciones` da el **bruto**).
 4. `backfill_historical_mep`: trae MEP histórico de ArgentinaDatos para todo el año.
+
+**Historial completo** ("Traer historial" en Operaciones): el frontend recorre los años hacia atrás llamando `POST /operations/sync?year=Y` uno por uno (progreso visible, sin timeouts largos). Corta tras 5 años seguidos vacíos una vez encontrada alguna operación, o en 2000. Un año pasado se sincroniza sólo `1/1 → 31/12` y, si viene vacío, no pide movimientos. El selector de año sale de `GET /operations/years`. nginx tiene `proxy_read_timeout 300s` porque un año completo de movimientos puede pasar el minuto.
 
 ## 🛠️ Tests
 

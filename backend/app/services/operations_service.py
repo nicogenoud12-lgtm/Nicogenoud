@@ -56,11 +56,17 @@ async def sync_operations(
 ) -> int:
     """Pull /operaciones for the given year, upsert by iol_numero. Returns # rows touched."""
     desde = date(year, 1, 1)
-    hasta = hasta or date.today()
+    # Un año pasado termina el 31/12: si no, sincronizar 2019 traía (y cruzaba con
+    # movimientos) todo desde 2019 hasta hoy.
+    hasta = hasta or min(date.today(), date(year, 12, 31))
     async with IolClient(db, user_id) as client:
         ops = await client.get_operaciones(estado="terminadas", desde=desde, hasta=hasta)
 
     log.info("sync_operations: IOL returned %d raw rows (user=%d, year=%d)", len(ops), user_id, year)
+    if not ops and year < date.today().year:
+        # Año pasado sin actividad (pasa al recorrer el historial hacia atrás):
+        # no hay nada que enriquecer ni convertir.
+        return 0
 
     touched = 0
     skipped_no_numero = 0
