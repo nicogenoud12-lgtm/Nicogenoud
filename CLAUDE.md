@@ -1,6 +1,6 @@
 # Nicogenoud — Investment Dashboard (IOL)
 
-Dashboard personal de inversiones del usuario `nico`. Conecta a **InvertirOnline (IOL)** vía API, traquea el portfolio desde 2026 (holdings, operaciones, P&L, dividendos), corre en Docker en su CasaOS. Mono-usuario, sin invitaciones.
+Dashboard personal de inversiones del usuario `nico`. Conecta a **InvertirOnline (IOL)** vía API, traquea el portfolio desde 2026 (holdings, operaciones, P&L, dividendos), corre en Docker en su CasaOS. Mono-usuario, sin invitaciones (para otra cuenta de IOL se levanta otra instancia, ver Deploy).
 
 ## ⚡ Deploy (lo más importante)
 
@@ -14,6 +14,14 @@ cd ~/Nicogenoud && git pull && docker compose up -d --build backend frontend
 - Si los cambios son **sólo de backend**: `docker compose up -d --build backend`.
 - Si son **sólo de frontend**: `docker compose up -d --build frontend`.
 - Si tocás `requirements.txt` o `package.json`: forzar `--no-cache` puede ser necesario, pero generalmente no.
+
+**Segunda instancia (cuenta IOL del papá)**: corre en `~/Nicogenoud-papa`, puerto `8086`, creada con `scripts/nueva-instancia.sh` (ver DEPLOY.md). Para actualizar la principal y todas las `Nicogenoud-*` de una:
+
+```bash
+cd ~/Nicogenoud && ./scripts/deploy.sh            # o ./scripts/deploy.sh backend
+```
+
+El puerto del frontend sale de `FRONTEND_PORT` (`.env` en la raíz, default 8085). No hardcodear puertos en `docker-compose.yml`.
 
 Después del deploy, **si tocamos lógica de clasificación, conversión FX o sync de operaciones**, decile al usuario que toque **"↻ Sincronizar"** en la pestaña Operaciones. El upsert es idempotente por `iol_numero` — re-aplica la lógica nueva a las operaciones existentes.
 

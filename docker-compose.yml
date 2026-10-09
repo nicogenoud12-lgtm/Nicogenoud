@@ -20,5 +20,7 @@ services:
     depends_on:
       - backend
     ports:
-      - "8085:80"
+      # Puerto configurable para correr más de una instancia en el mismo host
+      # (ver scripts/nueva-instancia.sh). Sin .env en la raíz queda en 8085.
+      - "${FRONTEND_PORT:-8085}:80"
     restart: unless-stopped
