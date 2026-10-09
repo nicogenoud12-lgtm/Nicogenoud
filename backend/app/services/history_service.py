@@ -13,6 +13,15 @@ de hoy / (cantidad × último precio de la serie).
 
 Los FCI no tienen serie en IOL: se valúan a la cuotaparte de hoy (valor plano
 salvo suscripciones y rescates), así que su rendimiento pasado queda en cero.
+
+Casos que IOL no informa como compra o venta:
+- Licitaciones y algunos aportes a FCI llegan como tipo "Otro" con cantidad: se
+  toman como ingreso de títulos ("YPF CL.43 ADICIONAL" se cruza con YM43O por
+  emisor y clase).
+- Un título que empezó a cotizar en el período (ON recién emitida) no existía
+  antes: no se valúa antes de su primera cotización.
+- Un título que venció en el período sale de la cartera con su amortización
+  final: hasta ese día se valúa con la cantidad que se cobró.
 """
 from __future__ import annotations
 
@@ -39,6 +48,14 @@ RECONSTRUCTED_SOURCE = "reconstruido"
 
 _BUY = ("COMPRA", "SUSCRIPCION")
 _SELL = ("VENTA", "RESCATE")
+# Licitaciones / aportes sin tipo claro: cuentan como ingreso si traen cantidad
+_OTHER_IN = "OTRO"
+_AMORT = "AMORTIZACION"
+# Un hueco así al principio de la serie es un título que empezó a cotizar en el período
+# (no uno ilíquido que no operó unos días); al final, uno que venció.
+_LISTING_GAP = timedelta(days=30)
+_EXPIRED_GAP = timedelta(days=5)
+_CLASS_RE = re.compile(r"\bCL(?:ASE)?\.?\s*(\d+)", re.IGNORECASE)
 _PER_100_CLASSES = ("Bono", "ON", "Letra")
 _IOL_MARKETS = {"argentina": ("bCBA",), "estados_unidos": ("nYSE", "nASDAQ", "aMEX")}
 _USD_MARKER = re.compile(r"\s+(US\$|USD|U\$S)$", re.IGNORECASE)
@@ -76,6 +93,10 @@ class _Position:
     prices: list = field(default_factory=list)
     factor: float | None = None
     unit_flat: float | None = None  # valor por unidad cuando no hay serie
+    descripcion: str = ""
+    held: bool = True  # está en la cartera de hoy
+    active_from: date | None = None  # empezó a cotizar en el período
+    active_until: date | None = None  # venció en el período (sólo posiciones que ya no están)
 
     def has_series(self) -> bool:
         return bool(self.prices) and self.factor is not None
@@ -125,6 +146,26 @@ def _op_amount_native(op: Operation, native: str, mep: dict, mep_dates: list) ->
     return amount / rate if native == "USD" else amount * rate
 
 
+def _by_issuer_class(sym: str, positions: dict[str, _Position]) -> str | None:
+    """"YPF CL.43 ADICIONAL" → la tenencia cuya descripción tiene YPF y Cl.43 (YM43O)."""
+    m = _CLASS_RE.search(sym)
+    issuer = sym.split()[0] if " " in sym else ""
+    if not m or not issuer:
+        return None
+    hits = [
+        k for k, p in positions.items()
+        if p.held and issuer in p.descripcion.upper()
+        and any(c == m.group(1) for c in _CLASS_RE.findall(p.descripcion))
+    ]
+    return hits[0] if len(hits) == 1 else None
+
+
+def _relevant(op: Operation) -> bool:
+    if op.event_kind == _OTHER_IN:
+        return _f(op.cantidad) > 0
+    return True
+
+
 def _build_positions(holdings: list[Holding], ops: list[Operation]) -> list[_Position]:
     positions: dict[str, _Position] = {}
     by_base: dict[str, str] = {}
@@ -134,7 +175,7 @@ def _build_positions(holdings: list[Holding], ops: list[Operation]) -> list[_Pos
         key = f"{h.mercado}:{h.simbolo}"
         positions[key] = _Position(
             simbolo=h.simbolo, mercado=h.mercado, clase=h.clase, native=native,
-            qty_now=_f(h.cantidad), value_now=value,
+            qty_now=_f(h.cantidad), value_now=value, descripcion=h.descripcion or "",
         )
         if h.clase != "FCI":
             by_base.setdefault(_base(h.simbolo), key)
@@ -143,18 +184,21 @@ def _build_positions(holdings: list[Holding], ops: list[Operation]) -> list[_Pos
     orphans: dict[str, list[Operation]] = {}
     for op in ops:
         sym = (op.simbolo or "").upper().strip()
-        if not sym:
+        if not sym or not _relevant(op):
             continue
-        key = exact.get(sym) or by_base.get(_base(sym))
+        key = exact.get(sym) or by_base.get(_base(sym)) or _by_issuer_class(sym, positions)
         if key:
-            positions[key].ops.append(op)
-        else:
+            # La amortización parcial de un título que sigue en cartera no cambia su cantidad
+            if op.event_kind != _AMORT:
+                positions[key].ops.append(op)
+        elif " " not in _USD_MARKER.sub("", sym):
             orphans.setdefault(_base(sym), []).append(op)
 
     # Posiciones que ya no están en la cartera (vendidas o vencidas en el período)
     for base, group in orphans.items():
-        pesos = [o for o in group if not _is_usd(o.currency_kind)]
-        ref = (pesos or group)[0]
+        trades = [o for o in group if o.event_kind != _AMORT]
+        pesos = [o for o in (trades or group) if not _is_usd(o.currency_kind)]
+        ref = (pesos or trades or group)[0]
         mercado_raw = (ref.mercado or "").lower()
         mercado = "estados_unidos" if any(m in mercado_raw for m in ("nyse", "nasdaq", "amex")) else "argentina"
         positions[f"~{base}"] = _Position(
@@ -163,6 +207,8 @@ def _build_positions(holdings: list[Holding], ops: list[Operation]) -> list[_Pos
             clase=classify_asset(simbolo=ref.simbolo, tipo=None, descripcion=ref.descripcion, mercado=ref.mercado),
             native="USD" if _is_usd(ref.currency_kind) else "ARS",
             ops=group,
+            descripcion=ref.descripcion or "",
+            held=False,
         )
     return list(positions.values())
 
@@ -178,6 +224,8 @@ def _calibrate(p: _Position, today: date) -> None:
     # Sin tenencia actual: la unidad sale de las propias operaciones
     ratios, units = [], []
     for o in p.ops:
+        if o.event_kind == _AMORT:
+            continue
         qty, price, monto = _f(o.cantidad), _f(o.precio), abs(_f(o.monto_operado))
         if qty > 0 and monto > 0:
             units.append(monto / qty)
@@ -219,7 +267,7 @@ async def reconstruct_snapshots(
         .filter(
             Operation.user_id == user_id,
             Operation.fecha_operada > desde,
-            Operation.event_kind.in_(_BUY + _SELL),
+            Operation.event_kind.in_(_BUY + _SELL + (_OTHER_IN, _AMORT)),
         )
         .all()
     )
@@ -241,18 +289,33 @@ async def reconstruct_snapshots(
     for p in positions:
         _calibrate(p, today)
 
-    # Cambio de cantidad de cada operación (+ compra, − venta)
+    fetch_from = desde - timedelta(days=10)
+    for p in positions:
+        if p.price_dates and p.price_dates[0] - fetch_from > _LISTING_GAP:
+            p.active_from = p.price_dates[0]
+        if not p.held and p.price_dates and today - p.price_dates[-1] > _EXPIRED_GAP:
+            p.active_until = p.price_dates[-1]
+
+    # Cambio de cantidad de cada operación (+ ingreso, − salida)
     deltas: list[list[tuple[date, float]]] = []
     for p in positions:
         moves = []
         for o in p.ops:
+            if o.event_kind == _AMORT:
+                # Sólo la amortización final de un título vencido: sale de la cartera por lo cobrado
+                if p.active_until is None or o.fecha_operada < p.active_until - _EXPIRED_GAP:
+                    continue
+                unit = p.unit_value(p.active_until)
+                amount = _op_amount_native(o, p.native, mep, mep_dates)
+                moves.append((o.fecha_operada, -(amount / unit) if unit and amount else 0.0))
+                continue
             qty = _f(o.cantidad)
             if p.clase == "FCI" or qty <= 0:
                 # FCI: la cantidad de IOL no siempre viene en cuotapartes; se usa el monto
                 unit = p.unit_value(o.fecha_operada)
                 amount = _op_amount_native(o, p.native, mep, mep_dates)
                 qty = amount / unit if unit and amount else 0.0
-            sign = 1 if o.event_kind in _BUY else -1
+            sign = -1 if o.event_kind in _SELL else 1
             moves.append((o.fecha_operada, sign * qty))
         deltas.append(moves)
 
@@ -283,6 +346,8 @@ async def reconstruct_snapshots(
         breakdown = []
         total_ars = total_usd = 0.0
         for p, moves in zip(positions, deltas):
+            if (p.active_from and d < p.active_from) or (p.active_until and d > p.active_until):
+                continue
             qty = p.qty_now - sum(dq for fecha, dq in moves if fecha and fecha > d)
             unit = p.unit_value(d)
             if qty <= 1e-9 or not unit:

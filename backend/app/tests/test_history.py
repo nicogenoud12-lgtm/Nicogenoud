@@ -29,7 +29,7 @@ def db():
 def user(db):
     u = User(username="papa", password_hash="x", is_admin=False)
     db.add(u)
-    for i in range(0, 40):
+    for i in range(0, 80):
         db.add(DolarQuote(date=_d(i), source="MEP", compra=1000, venta=1000, promedio=1000))
     db.commit()
     return u
@@ -128,3 +128,66 @@ def test_never_overwrites_real_snapshots_and_is_rerunnable(db, user, run):
     again = run()
     assert again["creados"] == 0
     assert again["actualizados"] == first["creados"]
+
+
+def test_licitacion_new_listing_and_matured_bond(db, user, monkeypatch):
+    series = {
+        # ON reabierta: cotiza todo el período
+        "YM43O": _series({n: 150_000 for n in range(0, 25)}),
+        # ON emitida hace 8 días: antes no existía
+        "OTS6O": _series({n: 160_000 for n in range(0, 9)}),
+        # Bono que venció hace 12 días (ya no está en la cartera)
+        "TZX26": _series({n: 200 for n in range(12, 60)}),
+    }
+
+    class _C:
+        def __init__(self, *a, **k):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *exc):
+            return False
+
+        async def get_serie_historica(self, mercado, simbolo, **kw):
+            if simbolo not in series:
+                raise RuntimeError("404")
+            return series[simbolo]
+
+    async def no_backfill(*a, **k):
+        return 0
+
+    monkeypatch.setattr(history_service, "IolClient", _C)
+    monkeypatch.setattr(history_service, "backfill_historical_mep", no_backfill)
+    db.add_all([
+        Holding(user_id=user.id, mercado="argentina", simbolo="YM43O", clase="ON", cantidad=14_000,
+                valuacion_ars=21_000_000, valuacion_usd=21_000, moneda="peso_Argentino",
+                descripcion="On Ypf S. A. Cl.43 Vto. 14/04/30 Usd"),
+        Holding(user_id=user.id, mercado="argentina", simbolo="YM39O", clase="ON", cantidad=1_000,
+                valuacion_ars=1_500_000, valuacion_usd=1_500, moneda="peso_Argentino",
+                descripcion="On Ypf Clase 39 Vto 22/07/30 U$S Cg"),
+        Holding(user_id=user.id, mercado="argentina", simbolo="OTS6O", clase="ON", cantidad=10_000,
+                valuacion_ars=16_000_000, valuacion_usd=16_000, moneda="peso_Argentino",
+                descripcion="On Otamerica Ebytem S.6 29/07/29 Usd"),
+        # Licitación informada como "Otro" con un nombre que no es ticker
+        Operation(user_id=user.id, iol_numero="10", fecha_operada=_d(5), event_kind="OTRO",
+                  simbolo="YPF CL.43 ADICIONAL", currency_kind="ARS", cantidad=14_000, precio=100,
+                  monto_operado=14_000, monto_neto=14_000),
+        # Amortización final del bono vencido
+        Operation(user_id=user.id, iol_numero="11", fecha_operada=_d(12), event_kind="AMORTIZACION",
+                  simbolo="TZX26", currency_kind="ARS", monto_operado=6_000_000, monto_neto=6_000_000),
+    ])
+    db.commit()
+    asyncio.run(history_service.reconstruct_snapshots(db, user.id, dias=60))
+
+    hace3 = _by_sym(_snap(db, 3))
+    assert hace3["YM43O"]["cantidad"] == pytest.approx(14_000)
+    assert hace3["OTS6O"]["valuacion_ars"] == pytest.approx(16_000_000)
+    assert "TZX26" not in hace3
+
+    hace15 = _by_sym(_snap(db, 15))
+    assert "YM43O" not in hace15  # antes de la licitación no estaba
+    assert "OTS6O" not in hace15  # antes de emitirse no existía
+    assert hace15["YM39O"]["cantidad"] == pytest.approx(1_000)  # otra ON de YPF no se toca
+    assert hace15["TZX26"]["valuacion_ars"] == pytest.approx(6_000_000)  # hasta vencer, lo cobrado

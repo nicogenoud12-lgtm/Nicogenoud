@@ -105,7 +105,13 @@ export default function OperacionesScreen() {
       key: "event_kind",
       label: "Tipo",
       sortable: true,
-      render: (r) => <span className="text-textSecondary">{KIND_LABEL[r.event_kind] || r.event_kind}</span>,
+      render: (r) => (
+        <span className="text-textSecondary">
+          {KIND_LABEL[r.event_kind] || r.event_kind}
+          {/* Sin tipo reconocido: se muestra el original de IOL para poder clasificarlo */}
+          {r.event_kind === "OTRO" && r.tipo && <span className="text-textMuted"> · {r.tipo}</span>}
+        </span>
+      ),
     },
     {
       key: "simbolo",

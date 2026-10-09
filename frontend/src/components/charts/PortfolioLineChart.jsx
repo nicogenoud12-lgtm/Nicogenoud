@@ -128,6 +128,26 @@ export default function PortfolioLineChart({
     }
     const tone = (v) => (v > 0 ? t.success : v < 0 ? t.danger : t.axis);
     const muted = { color: t.axis, fontSize: 11, marginTop: 3 };
+    // Activos que más cambiaron de valor contra el punto anterior (precio, compras o ventas)
+    const valueBySym = (d) => {
+      const m = new Map();
+      for (const h of Array.isArray(d.breakdown_json) ? d.breakdown_json : []) {
+        if (selectedClass && h.clase !== selectedClass) continue;
+        m.set(h.simbolo, (m.get(h.simbolo) || 0) + Number(h[`valuacion_${flowKey}`] || 0));
+      }
+      return m;
+    };
+    let movers = [];
+    if (prevPoint && Number(prevPoint[dataKey]) > 0) {
+      const a = valueBySym(prevPoint);
+      const b = valueBySym(point);
+      const minMove = Number(prevPoint[dataKey]) * 0.005;
+      movers = [...new Set([...a.keys(), ...b.keys()])]
+        .map((sym) => ({ sym, delta: (b.get(sym) || 0) - (a.get(sym) || 0) }))
+        .filter((m) => Math.abs(m.delta) >= minMove)
+        .sort((x, y) => Math.abs(y.delta) - Math.abs(x.delta))
+        .slice(0, 3);
+    }
     return (
       <div style={tooltipStyle(t)}>
         <div style={{ color: t.axis, marginBottom: 4 }}>{formatDateShort(label)}</div>
@@ -153,6 +173,19 @@ export default function PortfolioLineChart({
         {prevPoint && point.flowMark !== 0 && (
           <div style={muted}>
             {flujo > 0 ? "Compras netas" : "Ventas / amortizaciones"}: {fmt(Math.abs(flujo))}
+          </div>
+        )}
+        {movers.length > 0 && (
+          <div style={{ ...muted, marginTop: 6 }}>
+            {movers.map((m) => (
+              <div key={m.sym} style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
+                <span>{m.sym}</span>
+                <span style={{ color: tone(m.delta), fontVariantNumeric: "tabular-nums" }}>
+                  {m.delta > 0 ? "+" : "−"}
+                  {fmt(Math.abs(m.delta))}
+                </span>
+              </div>
+            ))}
           </div>
         )}
       </div>
